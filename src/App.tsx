@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Product, View, User, Language, Order, Banner } from './types';
-import { INITIAL_PRODUCTS, MARKUP_RATE, CURRENCY_RATE, CARD_NUMBER, CARD_OWNER, DELIVERY_RATES, PICKUP_ADDRESS, USD_RATE, CARGO_RATE_USD } from '../constants.js';
+import { INITIAL_PRODUCTS, MARKUP_RATE, CURRENCY_RATE, CARD_NUMBER, CARD_OWNER, DELIVERY_RATES, PICKUP_ADDRESS, USD_RATE, CARGO_RATE_USD } from './constants';
 
 const TELEGRAM_TOKEN = '8543158894:AAHkaN83tLCgNrJ-Omutn744aTui784GScc';
 const ADMIN_ID_MATCH = '8215056224'; 
