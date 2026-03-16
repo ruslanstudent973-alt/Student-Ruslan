@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import cors from "cors";
 import { fileURLToPath } from "url";
-import { initialData } from "./src/data/db.ts";
+import { initialData } from "./src/data/db";
 
 process.on('uncaughtException', (err) => {
   console.error('[Server] Uncaught Exception:', err);
@@ -278,16 +278,26 @@ app.post("/api/notify", async (req, res) => {
   const token = process.env.TELEGRAM_TOKEN || '8543158894:AAHkaN83tLCgNrJ-Omutn744aTui784GScc';
   const targetChatId = chatId || '8215056224';
   
+  console.log(`[Server] Sending Telegram notification to ${targetChatId}`);
+  
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'Markdown' })
+      body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'Markdown' }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
     const data = await response.json();
+    console.log(`[Server] Telegram response:`, data.ok ? 'OK' : 'Error');
     res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: "Failed to send notification" });
+  } catch (e: any) {
+    console.error('[Server] Telegram notification error:', e.message);
+    res.status(500).json({ error: "Failed to send notification", details: e.message });
   }
 });
 
@@ -370,17 +380,28 @@ if (!process.env.VERCEL) {
 }
 
 // Vite middleware for development
-if (process.env.NODE_ENV !== "production") {
-  const { createServer: createViteServer } = await import("vite");
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-  app.use(vite.middlewares);
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  try {
+    console.log('[Server] Initializing Vite middleware...');
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+    console.log('[Server] Vite middleware initialized');
+  } catch (e) {
+    console.error('[Server] Failed to initialize Vite middleware:', e);
+  }
 } else {
-  app.use(express.static(path.join(__dirname, "dist")));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "dist", "index.html"));
+  console.log(`[Server] Production mode or Vercel, serving static files from dist`);
+  const distPath = path.join(__dirname, "dist");
+  app.use(express.static(distPath));
+  app.get("*", (req, res, next) => {
+    // For API routes that aren't found, we already have a 404 handler above
+    // This is for SPA routing
+    if (req.url.startsWith('/api')) return next();
+    res.sendFile(path.join(distPath, "index.html"));
   });
 }
 
