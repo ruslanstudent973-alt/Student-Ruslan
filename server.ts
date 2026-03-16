@@ -36,7 +36,13 @@ app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().t
 
 // Middleware
 app.use((req, res, next) => {
-  console.log(`[Server] Request: ${req.method} ${req.url}`);
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (req.url.startsWith('/api')) {
+      console.log(`[Server] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    }
+  });
   next();
 });
 app.use(cors({
@@ -188,14 +194,38 @@ app.post("/api/banners", async (req, res) => {
 
 // API: Register/Update user
 app.post("/api/users", async (req, res) => {
-  const newUser = req.body;
-  const existingIndex = cachedData.users.findIndex((u: any) => u.phoneNumber === newUser.phoneNumber);
-  if (existingIndex > -1) {
-    cachedData.users[existingIndex] = { ...cachedData.users[existingIndex], ...newUser };
-  } else {
-    cachedData.users.push(newUser);
+  console.log('[Server] POST /api/users', JSON.stringify(req.body));
+  try {
+    const newUser = req.body;
+    if (!newUser || !newUser.phoneNumber) {
+      console.error('[Server] Invalid user data:', newUser);
+      return res.status(400).json({ 
+        error: "Foydalanuvchi ma'lumotlari noto'g'ri",
+        details: "phoneNumber majburiy" 
+      });
+    }
+    
+    if (!cachedData.users) {
+      console.log('[Server] Initializing users array');
+      cachedData.users = [];
+    }
+    
+    const existingIndex = cachedData.users.findIndex((u: any) => u.phoneNumber === newUser.phoneNumber);
+    if (existingIndex > -1) {
+      cachedData.users[existingIndex] = { ...cachedData.users[existingIndex], ...newUser };
+      console.log('[Server] User updated:', newUser.phoneNumber);
+    } else {
+      cachedData.users.push(newUser);
+      console.log('[Server] New user registered:', newUser.phoneNumber);
+    }
+    res.json({ success: true, user: newUser });
+  } catch (e: any) {
+    console.error('[Server] Error in /api/users:', e);
+    res.status(500).json({ 
+      error: 'Serverda xatolik yuz berdi', 
+      message: e.message 
+    });
   }
-  res.json({ success: true, user: newUser });
 });
 
 // API: Use promo code
@@ -296,8 +326,9 @@ app.post("/api/products/:id/reviews", async (req, res) => {
   }
 });
 
-// 404 Handler for API
-app.use('/api/*', (req, res) => {
+// 404 Handler for API (Must be before SPA fallback)
+app.use('/api', (req, res) => {
+  console.warn(`[Server] 404 API Not Found: ${req.method} ${req.url}`);
   res.status(404).json({ 
     error: `API yo'nalishi topilmadi: ${req.method} ${req.originalUrl || req.url}`,
     path: req.path,
@@ -308,17 +339,35 @@ app.use('/api/*', (req, res) => {
 // Global Error Handler
 app.use((err: any, req: any, res: any, next: any) => {
   console.error('Express Error:', err);
-  res.status(500).json({ 
-    error: 'Serverda ichki xatolik yuz berdi',
-    message: err.message 
-  });
+  if (req.url.startsWith('/api')) {
+    return res.status(500).json({ 
+      error: 'Serverda ichki xatolik yuz berdi',
+      message: err.message 
+    });
+  }
+  next(err);
 });
 
 // Start server
-const PORT = 3000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`[Server] Server running on http://0.0.0.0:${PORT}`);
-});
+if (!process.env.VERCEL) {
+  const PORT = 3000;
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Server] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[Server] Environment: ${process.env.NODE_ENV}`);
+  });
+  // Increase timeouts for stability
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+
+  process.on('SIGTERM', () => {
+    console.log('[Server] SIGTERM received, shutting down gracefully');
+    server.close(() => {
+      console.log('[Server] Process terminated');
+    });
+  });
+} else {
+  console.log(`[Server] Running in Vercel environment, skipping app.listen()`);
+}
 
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production") {

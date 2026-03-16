@@ -254,12 +254,20 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
       
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`HTTP ${res.status}: ${text.substring(0, 100)}`);
+        let errorDetail = text.substring(0, 100);
+        try {
+          const json = JSON.parse(text);
+          errorDetail = json.error || json.message || errorDetail;
+        } catch (e) {}
+        throw new Error(`HTTP ${res.status}: ${errorDetail}`);
       }
       
       if (!contentType || !contentType.includes("application/json")) {
         const text = await res.text();
-        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 100)}`);
+        if (text.includes("<!doctype html>") || text.includes("<html>")) {
+          throw new Error(`Server API o'rniga HTML qaytardi (SPA fallback). Yo'nalish xatosi bo'lishi mumkin.`);
+        }
+        throw new Error(`JSON kutilgan edi, lekin ${contentType} keldi. Javob: ${text.substring(0, 100)}`);
       }
       
       return await res.json();
@@ -268,8 +276,9 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
         console.error(`Fetch error (${url}) after ${retries} attempts:`, e);
         throw e;
       }
-      console.warn(`Fetch attempt ${i + 1} failed for ${url}. Retrying...`);
-      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      const delay = 1000 * (i + 1);
+      console.warn(`Fetch attempt ${i + 1} failed for ${url}. Retrying in ${delay}ms...`, e.message);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 };
@@ -539,6 +548,7 @@ const App: React.FC = () => {
   };
 
   const handleStartAuth = async (data: {username: string, phoneNumber: string, secretCode?: string}) => {
+    console.log('Starting Auth:', data);
     const isAdminMode = data.username.toLowerCase().trim() === 'admin' && data.secretCode === ADMIN_SECRET_CODE;
     
     const newUser: User = {
@@ -553,6 +563,7 @@ const App: React.FC = () => {
     };
 
     try {
+      console.log('Registering user:', newUser);
       // Referral logic should be handled server-side or via DB
       const referrerId = null;
       if (referrerId && referrerId !== data.phoneNumber) {
@@ -562,23 +573,29 @@ const App: React.FC = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ referrerId, amount: 1000 })
           });
-        } catch (e) {}
+        } catch (e) {
+          console.error('Referral error:', e);
+        }
       }
 
-      await safeFetchJSON('/api/users', {
+      const res = await safeFetchJSON('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newUser)
       });
+      console.log('User registered successfully:', res);
+      
       setCurrentUser(newUser);
       // User persistence is now exclusively MongoDB
       
       // Notify Admin via Telegram
+      console.log('Sending Telegram notification...');
       await sendTelegramNotification(`🆕 Yangi foydalanuvchi ro'yxatdan o'tdi:\n👤 Ism: ${data.username}\n📱 Tel: ${data.phoneNumber}`);
       
       notify("Xush kelibsiz!", "success");
       setCurrentView('home');
     } catch (e) {
+      console.error('Auth Error:', e);
       notify("Xatolik yuz berdi", "error");
     }
   };
