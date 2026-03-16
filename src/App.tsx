@@ -10,7 +10,7 @@ import {
   Heart, Ticket, Handshake, SlidersHorizontal, ChevronRight, Clock, ArrowRight, Filter, Minus, AlertCircle, CheckCircle2, Volume2, VolumeX, RefreshCw
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Product, View, User, Language, Order, Banner } from '../types.js';
+import { Product, View, User, Language, Order, Banner } from './types';
 import { INITIAL_PRODUCTS, MARKUP_RATE, CURRENCY_RATE, CARD_NUMBER, CARD_OWNER, DELIVERY_RATES, PICKUP_ADDRESS, USD_RATE, CARGO_RATE_USD } from '../constants.js';
 
 const TELEGRAM_TOKEN = '8543158894:AAHkaN83tLCgNrJ-Omutn744aTui784GScc';
