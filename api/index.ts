@@ -1,7 +1,14 @@
 import express from "express";
 import cors from "cors";
 
-const initialData: any = {
+const app = express();
+
+// Standard middleware
+app.use(cors());
+app.use(express.json());
+
+// Initial data
+const initialData = {
   products: [
     {
       id: "p1",
@@ -110,114 +117,63 @@ const initialData: any = {
   wishlists: {}
 };
 
-// In-memory data store
-let cachedData: any = { ...initialData };
+// In-memory store
+let cachedData = { ...initialData };
 
-const app = express();
+// API Routes
+app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.get("/api/data", (req, res) => {
+  res.json(cachedData);
+});
 
-// Health check
-app.get("/ping", (req, res) => res.send("pong"));
-app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
+app.post("/api/users", (req, res) => {
+  const newUser = req.body;
+  if (!newUser || !newUser.phoneNumber) {
+    return res.status(400).json({ error: "phoneNumber required" });
+  }
+  if (!cachedData.users) cachedData.users = [];
+  const existingIndex = cachedData.users.findIndex((u: any) => u.phoneNumber === newUser.phoneNumber);
+  if (existingIndex > -1) {
+    cachedData.users[existingIndex] = { ...cachedData.users[existingIndex], ...newUser };
+  } else {
+    cachedData.users.push(newUser);
+  }
+  res.json({ success: true, user: newUser });
+});
 
-// API: Sync data
-app.post("/api/sync", async (req, res) => {
-  try {
-    const data = req.body;
-    if (!data || !data.products) {
-      return res.status(400).json({ error: "Noto'g'ri ma'lumotlar formati" });
-    }
+app.post("/api/sync", (req, res) => {
+  const data = req.body;
+  if (data && data.products) {
     cachedData = { ...data };
-    res.json({ success: true, message: "Ma'lumotlar xotiraga muvaffaqiyatli saqlandi." });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.json({ success: true });
+  } else {
+    res.status(400).json({ error: "Invalid data" });
   }
 });
 
-// API: Get all data
-app.get("/api/data", async (req, res) => {
-    res.json(cachedData);
-});
-
-// API: Get DB Status
-app.get("/api/db-status", async (req, res) => {
-  res.json({ 
-    connected: true,
-    usingMongo: false,
-    productCount: cachedData.products?.length || 0,
-    status: "In-Memory Mode"
-  });
-});
-
-// API: Register/Update user
-app.post("/api/users", async (req, res) => {
-  try {
-    const newUser = req.body;
-    if (!newUser || !newUser.phoneNumber) {
-      return res.status(400).json({ error: "phoneNumber majburiy" });
-    }
-    if (!cachedData.users) cachedData.users = [];
-    const existingIndex = cachedData.users.findIndex((u: any) => u.phoneNumber === newUser.phoneNumber);
-    if (existingIndex > -1) {
-      cachedData.users[existingIndex] = { ...cachedData.users[existingIndex], ...newUser };
-    } else {
-      cachedData.users.push(newUser);
-    }
-    res.json({ success: true, user: newUser });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// API: Notify Admin via Telegram
 app.post("/api/notify", async (req, res) => {
   const { message, chatId } = req.body;
   const token = process.env.TELEGRAM_TOKEN || '8543158894:AAHkaN83tLCgNrJ-Omutn744aTui784GScc';
   const targetChatId = chatId || '8215056224';
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'Markdown' }),
-      signal: controller.signal
+      body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'Markdown' })
     });
-    clearTimeout(timeoutId);
     const data = await response.json();
     res.json(data);
   } catch (e: any) {
-    res.status(500).json({ error: "Failed to send notification", details: e.message });
+    res.status(500).json({ error: e.message });
   }
 });
 
-// API: Debug DB
-app.get("/api/debug-db", async (req, res) => {
-  res.json({ 
-    status: "Connected", 
-    counts: {
-      products: cachedData.products?.length || 0,
-      users: cachedData.users?.length || 0,
-      orders: cachedData.orders?.length || 0,
-      banners: cachedData.banners?.length || 0
-    },
-    uri_prefix: "in-memory"
-  });
-});
-
-// API: Export data
-app.get("/api/export", async (req, res) => {
-  res.json({
-    products: cachedData.products,
-    banners: cachedData.banners
-  });
-});
+// Add other essential routes briefly
+app.get("/api/debug-db", (req, res) => res.json({ status: "ok", counts: { products: cachedData.products.length } }));
 
 // API: Partnership request
-app.post("/api/partnerships", async (req, res) => {
+app.post("/api/partnerships", (req, res) => {
   const newRequest = { ...req.body, id: `PART-${Date.now()}`, status: 'pending', date: new Date().toISOString() };
   if (!cachedData.partnerships) cachedData.partnerships = [];
   cachedData.partnerships.push(newRequest);
@@ -225,7 +181,7 @@ app.post("/api/partnerships", async (req, res) => {
 });
 
 // API: Update partnership
-app.post("/api/partnerships/update", async (req, res) => {
+app.post("/api/partnerships/update", (req, res) => {
   const { id, status } = req.body;
   if (!cachedData.partnerships) cachedData.partnerships = [];
   const index = cachedData.partnerships.findIndex((p: any) => p.id === id);
@@ -255,7 +211,7 @@ app.post("/api/partnerships/update", async (req, res) => {
 });
 
 // API: Wishlist toggle
-app.post("/api/wishlist/toggle", async (req, res) => {
+app.post("/api/wishlist/toggle", (req, res) => {
   const { userId, productId } = req.body;
   if (!cachedData.wishlists) cachedData.wishlists = {};
   if (!cachedData.wishlists[userId]) cachedData.wishlists[userId] = [];
@@ -269,7 +225,7 @@ app.post("/api/wishlist/toggle", async (req, res) => {
 });
 
 // API: Support messages
-app.post("/api/support", async (req, res) => {
+app.post("/api/support", (req, res) => {
   const newMessage = { ...req.body, id: `MSG-${Date.now()}`, date: new Date().toISOString() };
   if (!cachedData.supportMessages) cachedData.supportMessages = [];
   cachedData.supportMessages.push(newMessage);
@@ -277,7 +233,7 @@ app.post("/api/support", async (req, res) => {
 });
 
 // API: Update products
-app.post("/api/products", async (req, res) => {
+app.post("/api/products", (req, res) => {
   const newProduct = req.body;
   const existingIndex = cachedData.products.findIndex((p: any) => p.id === newProduct.id);
   if (existingIndex > -1) {
@@ -289,20 +245,20 @@ app.post("/api/products", async (req, res) => {
 });
 
 // API: Delete product
-app.delete("/api/products/:id", async (req, res) => {
+app.delete("/api/products/:id", (req, res) => {
   const { id } = req.params;
   cachedData.products = cachedData.products.filter((p: any) => p.id !== id);
   res.json({ success: true });
 });
 
 // API: Update banners
-app.post("/api/banners", async (req, res) => {
+app.post("/api/banners", (req, res) => {
   cachedData.banners = req.body;
   res.json({ success: true });
 });
 
 // API: Use promo code
-app.post("/api/promo/use", async (req, res) => {
+app.post("/api/promo/use", (req, res) => {
   const { code } = req.body;
   if (!cachedData.promoCodes) cachedData.promoCodes = [];
   const promoIndex = cachedData.promoCodes.findIndex((p: any) => p.code.toUpperCase() === code.toUpperCase());
@@ -320,7 +276,7 @@ app.post("/api/promo/use", async (req, res) => {
 });
 
 // API: Create order
-app.post("/api/orders", async (req, res) => {
+app.post("/api/orders", (req, res) => {
   const newOrder = { ...req.body, id: `ORD-${Date.now()}` };
   if (!cachedData.orders) cachedData.orders = [];
   cachedData.orders.push(newOrder);
@@ -328,7 +284,7 @@ app.post("/api/orders", async (req, res) => {
 });
 
 // API: Update order
-app.post("/api/orders/update", async (req, res) => {
+app.post("/api/orders/update", (req, res) => {
   const { id, status, trackNumber } = req.body;
   if (!cachedData.orders) cachedData.orders = [];
   const orderIndex = cachedData.orders.findIndex((o: any) => o.id === id);
@@ -341,7 +297,7 @@ app.post("/api/orders/update", async (req, res) => {
 });
 
 // API: Delete order
-app.delete("/api/orders/:id", async (req, res) => {
+app.delete("/api/orders/:id", (req, res) => {
   const { id } = req.params;
   if (!cachedData.orders) cachedData.orders = [];
   cachedData.orders = cachedData.orders.filter((o: any) => o.id !== id);
@@ -349,7 +305,7 @@ app.delete("/api/orders/:id", async (req, res) => {
 });
 
 // API: Add referral bonus
-app.post("/api/referral/add", async (req, res) => {
+app.post("/api/referral/add", (req, res) => {
   const { referrerId, amount } = req.body;
   const userIndex = cachedData.users.findIndex((u: any) => u.telegramId === referrerId || u.phoneNumber === referrerId);
   if (userIndex > -1) {
@@ -362,35 +318,29 @@ app.post("/api/referral/add", async (req, res) => {
 });
 
 // API: Add review to product
-app.post("/api/products/:id/reviews", async (req, res) => {
+app.post("/api/products/:id/reviews", (req, res) => {
   const { id } = req.params;
   const review = { ...req.body, id: `REV-${Date.now()}`, date: new Date().toISOString().split('T')[0] };
   const productIndex = cachedData.products.findIndex((p: any) => p.id === id);
   if (productIndex > -1) {
-    if (!cachedData.products[productIndex].reviews) cachedData.products[productIndex].reviews = [];
-    cachedData.products[productIndex].reviews.unshift(review);
-    const reviews = cachedData.products[productIndex].reviews;
+    const product = cachedData.products[productIndex] as any;
+    if (!product.reviews) product.reviews = [];
+    product.reviews.unshift(review);
+    const reviews = product.reviews;
     const avgRating = reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / reviews.length;
-    cachedData.products[productIndex].rating = Number(avgRating.toFixed(1));
+    product.rating = Number(avgRating.toFixed(1));
     res.json({ success: true, review });
   } else {
     res.status(404).json({ error: "Product not found" });
   }
 });
 
-// 404 Handler for API
-app.use('/api', (req, res) => {
-  res.status(404).json({ error: `API topilmadi: ${req.method} ${req.url}` });
-});
-
-// Global Error Handler
+// Global error handler
 app.use((err: any, req: any, res: any, next: any) => {
-  console.error('[App Error]:', err);
-  if (req.url.startsWith('/api')) {
-    return res.status(500).json({ error: 'Server xatoligi', message: err.message });
-  }
-  next(err);
+  console.error(err);
+  res.status(500).json({ error: "Internal Server Error", message: err.message });
 });
 
-export { app };
+// Export for Vercel
 export default app;
+export { app };
