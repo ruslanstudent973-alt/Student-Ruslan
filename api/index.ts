@@ -1,6 +1,5 @@
 import express from "express";
 import cors from "cors";
-import fetch from "node-fetch";
 
 const app = express();
 
@@ -127,6 +126,11 @@ app.use((req, res, next) => {
 });
 
 const router = express.Router();
+
+router.get("/", (req, res) => {
+  console.log("[API] Root route hit");
+  res.json({ message: "Ruslan Shop API is running", version: "1.0.0" });
+});
 
 router.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
 
@@ -341,7 +345,11 @@ router.post("/products/:id/reviews", (req, res) => {
 });
 
 app.use("/api", router);
-app.use(router);
+
+// API 404 handler
+router.use((req, res) => {
+  res.status(404).json({ error: "API Route not found", path: req.url });
+});
 
 // Global error handler
 app.use((err: any, req: any, res: any, next: any) => {
