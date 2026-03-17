@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import fetch from "node-fetch";
 
 const app = express();
 
@@ -134,18 +135,23 @@ router.get("/data", (req, res) => {
 });
 
 router.post("/users", (req, res) => {
-  const newUser = req.body;
-  if (!newUser || !newUser.phoneNumber) {
-    return res.status(400).json({ error: "phoneNumber required" });
+  try {
+    const newUser = req.body;
+    if (!newUser || !newUser.phoneNumber) {
+      return res.status(400).json({ error: "phoneNumber required" });
+    }
+    if (!cachedData.users) cachedData.users = [];
+    const existingIndex = cachedData.users.findIndex((u: any) => u.phoneNumber === newUser.phoneNumber);
+    if (existingIndex > -1) {
+      cachedData.users[existingIndex] = { ...cachedData.users[existingIndex], ...newUser };
+    } else {
+      cachedData.users.push(newUser);
+    }
+    res.json({ success: true, user: newUser });
+  } catch (e: any) {
+    console.error("Users POST error:", e);
+    res.status(500).json({ error: "Server Error", message: e.message });
   }
-  if (!cachedData.users) cachedData.users = [];
-  const existingIndex = cachedData.users.findIndex((u: any) => u.phoneNumber === newUser.phoneNumber);
-  if (existingIndex > -1) {
-    cachedData.users[existingIndex] = { ...cachedData.users[existingIndex], ...newUser };
-  } else {
-    cachedData.users.push(newUser);
-  }
-  res.json({ success: true, user: newUser });
 });
 
 router.post("/sync", (req, res) => {
@@ -335,7 +341,7 @@ router.post("/products/:id/reviews", (req, res) => {
 });
 
 app.use("/api", router);
-app.use("/", router);
+app.use(router);
 
 // Global error handler
 app.use((err: any, req: any, res: any, next: any) => {
@@ -344,4 +350,3 @@ app.use((err: any, req: any, res: any, next: any) => {
 });
 
 export default app;
-export { app };
