@@ -1,133 +1,30 @@
 import express from "express";
 import cors from "cors";
+import { initialData } from "./data.ts";
 
 const app = express();
 
-// Standard middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
-
-// Initial data
-const initialData = {
-  products: [
-    {
-      id: "p1",
-      name: "AirPods Pro Gen 2 (Premium)",
-      pinduoduoPrice: 180,
-      oldPrice: 450000,
-      description: "Eng so'nggi rusumdagi AirPods Pro. Shovqinni kamaytirish (ANC) va yuqori sifatli ovoz. Xitoyning eng yaxshi fabrikasidan keltiriladi.",
-      category: "Elektronika",
-      images: [
-        "https://images.unsplash.com/photo-1588423770186-80f3ef9adad0?q=80&w=1000&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1600294037681-c80b4cbfa11c?q=80&w=1000&auto=format&fit=crop"
-      ],
-      videos: [
-        "https://assets.mixkit.co/videos/preview/mixkit-girl-putting-on-white-wireless-headphones-to-listen-to-music-34533-large.mp4"
-      ],
-      sizes: ["Oq", "Qora"],
-      rating: 4.9,
-      salesCount: 1240,
-      seller: {
-        name: "Ruslan Electronics",
-        avatar: "",
-        rating: 5,
-        description: "Ishonchli yetkazib beruvchi"
-      },
-      isOriginal: true,
-      isCheapPrice: true,
-      weight: 0.2
-    },
-    {
-      id: "p2",
-      name: "Nike Air Jordan 1 Low",
-      pinduoduoPrice: 250,
-      oldPrice: 600000,
-      description: "Sifatli krossovkalar. Kundalik kiyish uchun juda qulay va zamonaviy dizayn. Ranglari tanlovda mavjud.",
-      category: "Oyoq kiyim",
-      images: [
-        "https://images.unsplash.com/photo-1552346154-21d32810aba3?q=80&w=1000&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?q=80&w=1000&auto=format&fit=crop"
-      ],
-      videos: [
-        "https://assets.mixkit.co/videos/preview/mixkit-close-up-of-shoes-walking-on-pavement-4361-large.mp4"
-      ],
-      sizes: ["39", "40", "41", "42", "43", "44"],
-      rating: 4.8,
-      salesCount: 850,
-      seller: {
-        name: "Sneaker Shop Uz",
-        avatar: "",
-        rating: 4.9,
-        description: "Brend oyoq kiyimlar mutaxassisi"
-      },
-      isOriginal: true,
-      weight: 1.2
-    },
-    {
-      id: "p3",
-      name: "Smart Watch Ultra 8",
-      pinduoduoPrice: 140,
-      oldPrice: 350000,
-      description: "Eng yangi smart soat. Qo'ng'iroq qilish, xabarlarni o'qish va salomatlikni kuzatish funksivari mavjud. Ekran sifati juda yuqori.",
-      category: "Gadjeytlar",
-      images: [
-        "https://images.unsplash.com/photo-1579586337278-3befd40fd17a?q=80&w=1000&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=1000&auto=format&fit=crop"
-      ],
-      videos: [
-        "https://assets.mixkit.co/videos/preview/mixkit-young-man-setting-up-his-smart-watch-before-a-workout-34139-large.mp4"
-      ],
-      sizes: ["Orange", "Grey", "Black"],
-      rating: 4.7,
-      salesCount: 2100,
-      seller: {
-        name: "Gid Store",
-        avatar: "",
-        rating: 4.8,
-        description: "Xitoydan to'g'ridan-to'g'ri yetkazish"
-      },
-      isCheapPrice: true,
-      weight: 0.3
-    }
-  ],
-  users: [
-    {
-      telegramId: "8215056224",
-      username: "Ruslan Admin",
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop",
-      referralBalance: 0,
-      invitedCount: 0,
-      bio: "Ruslan Shop asoschisi",
-      isAdmin: true
-    }
-  ],
-  orders: [],
-  banners: [
-    {
-      id: "b1",
-      title: "Yangi Mavsum To'plami",
-      subtitle: "50% gacha chegirmalar",
-      image: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop",
-      link: "catalog"
-    }
-  ],
-  supportMessages: [],
-  promoCodes: [],
-  partnerships: [],
-  wishlists: {}
-};
 
 // In-memory store
 let cachedData = { ...initialData };
 
-// API Routes
-app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+app.use((req, res, next) => {
+  console.log(`[API] ${req.method} ${req.url}`);
+  next();
+});
 
-app.get("/api/data", (req, res) => {
+const router = express.Router();
+
+router.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
+
+router.get("/data", (req, res) => {
   res.json(cachedData);
 });
 
-app.post("/api/users", (req, res) => {
+router.post("/users", (req, res) => {
   const newUser = req.body;
   if (!newUser || !newUser.phoneNumber) {
     return res.status(400).json({ error: "phoneNumber required" });
@@ -142,7 +39,7 @@ app.post("/api/users", (req, res) => {
   res.json({ success: true, user: newUser });
 });
 
-app.post("/api/sync", (req, res) => {
+router.post("/sync", (req, res) => {
   const data = req.body;
   if (data && data.products) {
     cachedData = { ...data };
@@ -152,7 +49,7 @@ app.post("/api/sync", (req, res) => {
   }
 });
 
-app.post("/api/notify", async (req, res) => {
+router.post("/notify", async (req, res) => {
   const { message, chatId } = req.body;
   const token = process.env.TELEGRAM_TOKEN || '8543158894:AAHkaN83tLCgNrJ-Omutn744aTui784GScc';
   const targetChatId = chatId || '8215056224';
@@ -169,19 +66,23 @@ app.post("/api/notify", async (req, res) => {
   }
 });
 
-// Add other essential routes briefly
-app.get("/api/debug-db", (req, res) => res.json({ status: "ok", counts: { products: cachedData.products.length } }));
+router.get("/db-status", (req, res) => {
+  res.json({
+    connected: true,
+    usingMongo: false,
+    productCount: (cachedData.products || []).length,
+    error: ""
+  });
+});
 
-// API: Partnership request
-app.post("/api/partnerships", (req, res) => {
+router.post("/partnerships", (req, res) => {
   const newRequest = { ...req.body, id: `PART-${Date.now()}`, status: 'pending', date: new Date().toISOString() };
   if (!cachedData.partnerships) cachedData.partnerships = [];
   cachedData.partnerships.push(newRequest);
   res.json({ success: true, request: newRequest });
 });
 
-// API: Update partnership
-app.post("/api/partnerships/update", (req, res) => {
+router.post("/partnerships/update", (req, res) => {
   const { id, status } = req.body;
   if (!cachedData.partnerships) cachedData.partnerships = [];
   const index = cachedData.partnerships.findIndex((p: any) => p.id === id);
@@ -210,8 +111,7 @@ app.post("/api/partnerships/update", (req, res) => {
   }
 });
 
-// API: Wishlist toggle
-app.post("/api/wishlist/toggle", (req, res) => {
+router.post("/wishlist/toggle", (req, res) => {
   const { userId, productId } = req.body;
   if (!cachedData.wishlists) cachedData.wishlists = {};
   if (!cachedData.wishlists[userId]) cachedData.wishlists[userId] = [];
@@ -224,16 +124,14 @@ app.post("/api/wishlist/toggle", (req, res) => {
   res.json({ success: true, wishlist: cachedData.wishlists[userId] });
 });
 
-// API: Support messages
-app.post("/api/support", (req, res) => {
+router.post("/support", (req, res) => {
   const newMessage = { ...req.body, id: `MSG-${Date.now()}`, date: new Date().toISOString() };
   if (!cachedData.supportMessages) cachedData.supportMessages = [];
   cachedData.supportMessages.push(newMessage);
   res.json({ success: true });
 });
 
-// API: Update products
-app.post("/api/products", (req, res) => {
+router.post("/products", (req, res) => {
   const newProduct = req.body;
   const existingIndex = cachedData.products.findIndex((p: any) => p.id === newProduct.id);
   if (existingIndex > -1) {
@@ -244,21 +142,18 @@ app.post("/api/products", (req, res) => {
   res.json({ success: true });
 });
 
-// API: Delete product
-app.delete("/api/products/:id", (req, res) => {
+router.delete("/products/:id", (req, res) => {
   const { id } = req.params;
   cachedData.products = cachedData.products.filter((p: any) => p.id !== id);
   res.json({ success: true });
 });
 
-// API: Update banners
-app.post("/api/banners", (req, res) => {
+router.post("/banners", (req, res) => {
   cachedData.banners = req.body;
   res.json({ success: true });
 });
 
-// API: Use promo code
-app.post("/api/promo/use", (req, res) => {
+router.post("/promo/use", (req, res) => {
   const { code } = req.body;
   if (!cachedData.promoCodes) cachedData.promoCodes = [];
   const promoIndex = cachedData.promoCodes.findIndex((p: any) => p.code.toUpperCase() === code.toUpperCase());
@@ -275,16 +170,14 @@ app.post("/api/promo/use", (req, res) => {
   }
 });
 
-// API: Create order
-app.post("/api/orders", (req, res) => {
+router.post("/orders", (req, res) => {
   const newOrder = { ...req.body, id: `ORD-${Date.now()}` };
   if (!cachedData.orders) cachedData.orders = [];
   cachedData.orders.push(newOrder);
   res.json({ success: true, order: newOrder });
 });
 
-// API: Update order
-app.post("/api/orders/update", (req, res) => {
+router.post("/orders/update", (req, res) => {
   const { id, status, trackNumber } = req.body;
   if (!cachedData.orders) cachedData.orders = [];
   const orderIndex = cachedData.orders.findIndex((o: any) => o.id === id);
@@ -296,16 +189,14 @@ app.post("/api/orders/update", (req, res) => {
   }
 });
 
-// API: Delete order
-app.delete("/api/orders/:id", (req, res) => {
+router.delete("/orders/:id", (req, res) => {
   const { id } = req.params;
   if (!cachedData.orders) cachedData.orders = [];
   cachedData.orders = cachedData.orders.filter((o: any) => o.id !== id);
   res.json({ success: true });
 });
 
-// API: Add referral bonus
-app.post("/api/referral/add", (req, res) => {
+router.post("/referral/add", (req, res) => {
   const { referrerId, amount } = req.body;
   const userIndex = cachedData.users.findIndex((u: any) => u.telegramId === referrerId || u.phoneNumber === referrerId);
   if (userIndex > -1) {
@@ -317,8 +208,7 @@ app.post("/api/referral/add", (req, res) => {
   }
 });
 
-// API: Add review to product
-app.post("/api/products/:id/reviews", (req, res) => {
+router.post("/products/:id/reviews", (req, res) => {
   const { id } = req.params;
   const review = { ...req.body, id: `REV-${Date.now()}`, date: new Date().toISOString().split('T')[0] };
   const productIndex = cachedData.products.findIndex((p: any) => p.id === id);
@@ -335,12 +225,14 @@ app.post("/api/products/:id/reviews", (req, res) => {
   }
 });
 
+app.use("/api", router);
+app.use("/", router);
+
 // Global error handler
 app.use((err: any, req: any, res: any, next: any) => {
-  console.error(err);
+  console.error("API Error:", err);
   res.status(500).json({ error: "Internal Server Error", message: err.message });
 });
 
-// Export for Vercel
 export default app;
 export { app };
