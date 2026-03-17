@@ -120,6 +120,7 @@ const initialData: any = {
 // In-memory store
 let cachedData = { ...initialData };
 
+// Logging middleware
 app.use((req, res, next) => {
   console.log(`[API] ${req.method} ${req.url}`);
   next();
@@ -127,12 +128,21 @@ app.use((req, res, next) => {
 
 const router = express.Router();
 
+// Root and Health
 router.get("/", (req, res) => {
-  console.log("[API] Root route hit");
-  res.json({ message: "Ruslan Shop API is running", version: "1.0.0" });
+  res.json({ message: "Ruslan Shop API is running", version: "1.1.0" });
 });
 
-router.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
+router.get("/health", (req, res) => res.json({ status: "ok" }));
+
+router.get("/db-status", (req, res) => {
+  res.json({
+    connected: true,
+    usingMongo: false,
+    productCount: (cachedData.products || []).length,
+    error: ""
+  });
+});
 
 router.get("/data", (req, res) => {
   res.json(cachedData);
@@ -345,16 +355,21 @@ router.post("/products/:id/reviews", (req, res) => {
 });
 
 app.use("/api", router);
+app.use("/", router); // Fallback for Vercel rewrite variations
 
-// API 404 handler
-router.use((req, res) => {
-  res.status(404).json({ error: "API Route not found", path: req.url });
+// Global 404 for API
+app.use("/api/*", (req, res) => {
+  res.status(404).json({ error: "API Route not found", path: req.originalUrl });
 });
 
 // Global error handler
 app.use((err: any, req: any, res: any, next: any) => {
-  console.error("API Error:", err);
-  res.status(500).json({ error: "Internal Server Error", message: err.message });
+  console.error("Critical API Error:", err);
+  res.status(500).json({ 
+    error: "Internal Server Error", 
+    message: err.message,
+    path: req.url 
+  });
 });
 
 export default app;
