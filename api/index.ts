@@ -313,8 +313,21 @@ async function ensureSeeded(db: Db): Promise<void> {
 }
 
 async function requireDb(): Promise<Db> {
-  const rawUri = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL;
-  const uri = rawUri ? rawUri.trim().replace(/^\[|\]$/g, "").replace(/^["']|["']$/g, "") : "";
+  const rawUri =
+    process.env.MONGODB_URI ||
+    process.env.MONGO_URI ||
+    process.env.MONGODB_URL ||
+    process.env.MONGO_URL ||
+    process.env.DATABASE_URL ||
+    process.env.VITE_MONGODB_URI;
+  const uri = rawUri
+    ? rawUri
+        .trim()
+        .replace(/^(MONGODB_URI|MONGO_URI|MONGODB_URL|MONGO_URL|DATABASE_URL|VITE_MONGODB_URI)\s*=\s*/i, "")
+        .replace(/^\[|\]$/g, "")
+        .replace(/^["']|["']$/g, "")
+        .trim()
+    : "";
   if (!uri) {
     throw new Error("MONGODB_URI muhit o'zgaruvchisi topilmadi — Vercel Settings > Environment Variables bo'limiga kiriting va Redeploy qiling");
   }
