@@ -192,7 +192,8 @@ const initialSeedData = {
 };
 
 // MongoDB Atlas connection (database: saytim)
-const DB_NAME = process.env.MONGODB_DB || "saytim";
+const RAW_DB_NAME = (process.env.MONGODB_DB || "").trim();
+const DB_NAME = RAW_DB_NAME && !/[/\\. "$*<>:|?]/.test(RAW_DB_NAME) ? RAW_DB_NAME : "saytim";
 
 const globalForMongo = globalThis as typeof globalThis & {
   __mongoClientPromise?: Promise<MongoClient> | null;
