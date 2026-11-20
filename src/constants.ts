@@ -44,7 +44,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     rating: 4.9,
     salesCount: 1240,
     seller: {
-      name: "Ruslan Electronics",
+      name: "YUYU Electronics",
       avatar: "",
       rating: 5,
       description: "Ishonchli yetkazib beruvchi"
