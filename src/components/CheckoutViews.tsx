@@ -18,6 +18,7 @@ import {
   getRegularPriceUzs,
   getEffectiveProductPriceUzs
 } from '../utils/vip';
+import { compressImageFile } from '../utils/mediaCompress';
 
 export const CartView: React.FC<{
   t: any;
@@ -322,15 +323,14 @@ export const PaymentView: React.FC<{
     }
   };
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     playSound();
-    if (!file.type.startsWith('image/')) {
-      notify("Iltimos, faqat rasm faylini yuklang", 'error');
-      return;
+    try {
+      const compressed = await compressImageFile(file, 'receipt');
+      setReceipt(compressed);
+    } catch (err: any) {
+      notify(err?.message || "Rasmni qayta ishlashda xatolik", 'error');
     }
-    const reader = new FileReader();
-    reader.onloadend = () => setReceipt(reader.result as string);
-    reader.readAsDataURL(file);
   };
 
   const handleConfirm = () => {

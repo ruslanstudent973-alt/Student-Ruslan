@@ -29,62 +29,13 @@ import {
 import { CustomRequest, CustomRequestStatus, Product, User } from '../types';
 import { MARKUP_RATE, CURRENCY_RATE } from '../constants';
 import { SafeImage } from './YuyuPrimitives';
-
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+import { compressImageFile } from '../utils/mediaCompress';
 
 /**
- * Client-side image validation & compression (Canvas resize to max 1280px, JPEG/WebP quality 0.82)
+ * Client-side image validation & compression (Vercel-safe adaptive Canvas compression)
  */
 export const validateAndCompressImage = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      reject(new Error("Faqat JPG, PNG yoki WEBP formatidagi rasmlarni yuklash mumkin."));
-      return;
-    }
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      reject(new Error("Rasm hajmi 5 MB dan oshmasligi kerak."));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Rasmni o'qishda xatolik yuz berdi."));
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const img = new Image();
-      img.onerror = () => resolve(dataUrl);
-      img.onload = () => {
-        const maxDim = 1280;
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width >= height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve(dataUrl);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.82);
-          resolve(compressed.length < dataUrl.length ? compressed : dataUrl);
-        } catch {
-          resolve(dataUrl);
-        }
-      };
-      img.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
-  });
+  return compressImageFile(file, 'product');
 };
 
 export const customRequestToProduct = (req: CustomRequest): Product => {

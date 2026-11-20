@@ -133,6 +133,9 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
   if (adminToken) {
     baseHeaders['x-admin-device-token'] = adminToken;
   }
+  const method = (options?.method || 'GET').toUpperCase();
+  const maxAttempts = method === 'GET' || method === 'HEAD' ? Math.max(1, retries) : 1;
+
   const mergedOptions: RequestInit = {
     ...options,
     headers: {
@@ -141,26 +144,36 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
     }
   };
 
-  for (let i = 0; i < retries; i++) {
+  for (let i = 0; i < maxAttempts; i++) {
     try {
       const res = await fetch(url, mergedOptions);
       const contentType = (res.headers.get('content-type') || '').toLowerCase();
 
       if (!res.ok) {
+        if (res.status === 413) {
+          const err: any = new Error(
+            "Yuklangan fayl hajmi juda katta (Vercel 4.5 MB limiti). Iltimos, kichikroq rasm/video tanlang yoki video uchun URL kiriting."
+          );
+          err.status = 413;
+          throw err;
+        }
+        if (res.status === 504) {
+          const err: any = new Error(
+            "Server javobi kechikdi (504). Iltimos, birozdan so'ng qayta urinib ko'ring."
+          );
+          err.status = 504;
+          throw err;
+        }
         const text = await res.text();
         let errorDetail = text.trim().startsWith('<')
           ? `Server vaqtincha javob bermadi (${res.status})`
-          : text.substring(0, 140);
+          : text.substring(0, 180);
         try {
           const json = JSON.parse(text);
           errorDetail = json.error || json.message || errorDetail;
         } catch {}
         const err: any = new Error(errorDetail);
         err.status = res.status;
-        // Do not retry 4xx client validation/auth errors
-        if (res.status >= 400 && res.status < 500) {
-          throw err;
-        }
         throw err;
       }
 
@@ -171,14 +184,14 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
       const text = await res.text();
       const trimmed = text.trim();
       if (!trimmed || trimmed.startsWith('<')) {
-        throw new Error('Server JSON o‘rniga HTML qaytardi (qayta urinilmoqda)');
+        throw new Error("Server JSON o'rniga HTML qaytardi (qayta urinilmoqda)");
       }
       return JSON.parse(trimmed);
     } catch (e: any) {
       if (e?.status && e.status >= 400 && e.status < 500) {
         throw e;
       }
-      if (i === retries - 1) {
+      if (i === maxAttempts - 1) {
         console.warn(`Fetch (${url}) tugallanmadi:`, e?.message);
         throw e;
       }

@@ -320,10 +320,13 @@ async function requireDb(): Promise<Db> {
 
   try {
     if (!globalForMongo.__mongoClientPromise) {
+      const isVercel = Boolean(process.env.VERCEL);
       const client = new MongoClient(uri, {
         serverSelectionTimeoutMS: 8000,
         connectTimeoutMS: 8000,
-        maxPoolSize: 10
+        maxPoolSize: isVercel ? 5 : 10,
+        minPoolSize: 0,
+        maxIdleTimeMS: isVercel ? 15000 : 60000
       });
       globalForMongo.__mongoClientPromise = client.connect();
     }
@@ -778,12 +781,33 @@ router.get("/", (req, res) =>
 );
 
 router.get("/health", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const runtime = process.env.VERCEL ? "vercel-serverless" : "node-server";
+  const region = process.env.VERCEL_REGION || "local";
+  const telegramConfigured = Boolean((process.env.TELEGRAM_TOKEN || "").trim());
   try {
     const db = await requireDb();
     await db.command({ ping: 1 });
-    res.json({ status: "ok", mongoConnected: true, dbName: DB_NAME, time: Date.now() });
+    res.json({
+      status: "ok",
+      mongoConnected: true,
+      dbName: DB_NAME,
+      runtime,
+      region,
+      telegramConfigured,
+      time: Date.now()
+    });
   } catch (e: any) {
-    res.status(503).json({ status: "error", mongoConnected: false, dbName: DB_NAME, error: e.message });
+    res.status(503).json({
+      status: "error",
+      mongoConnected: false,
+      dbName: DB_NAME,
+      runtime,
+      region,
+      telegramConfigured,
+      error: e.message,
+      hint: "Vercel Environment Variables ichida MONGODB_URI va MongoDB Atlas Network Access (0.0.0.0/0) sozlamasini tekshiring."
+    });
   }
 });
 
@@ -2674,18 +2698,26 @@ router.post("/admin-access/password", async (req, res) => {
   }
 });
 
-// Route API requests under /api, /api/index.ts, or direct serverless execution
+// Route API requests under /api, /api/index.ts, /api/index, or direct Vercel serverless execution
 app.use((req, res, next) => {
-  const isApiRequest = req.url.startsWith("/api") || req.originalUrl?.startsWith("/api") || Boolean(process.env.VERCEL);
+  const isApiRequest =
+    req.url.startsWith("/api") ||
+    req.originalUrl?.startsWith("/api") ||
+    Boolean(process.env.VERCEL);
   if (!isApiRequest) {
     return next();
   }
 
-  let url = req.url;
+  let url = req.url || "/";
   if (url.startsWith("/api/index.ts")) {
-    url = url.replace("/api/index.ts", "") || "/";
+    url = url.slice("/api/index.ts".length);
+  } else if (url.startsWith("/api/index")) {
+    url = url.slice("/api/index".length);
   } else if (url.startsWith("/api")) {
-    url = url.slice(4) || "/";
+    url = url.slice("/api".length);
+  }
+  if (!url || url.startsWith("?")) {
+    url = "/" + url;
   }
   req.url = url;
 
@@ -2694,7 +2726,10 @@ app.use((req, res, next) => {
 
 // Catch-all 404 for unmatched API requests - Always returns clean JSON
 app.use((req, res, next) => {
-  const isApiRequest = req.url.startsWith("/api") || req.originalUrl?.startsWith("/api") || Boolean(process.env.VERCEL);
+  const isApiRequest =
+    req.url.startsWith("/api") ||
+    req.originalUrl?.startsWith("/api") ||
+    Boolean(process.env.VERCEL);
   if (!isApiRequest) {
     return next();
   }
@@ -2710,12 +2745,21 @@ app.use((req, res, next) => {
 app.use((err: any, req: any, res: any, next: any) => {
   console.error("Critical API Error:", err);
   if (!res.headersSent) {
-    res.status(500).json({
+    if (err?.type === "entity.too.large" || err?.status === 413) {
+      return res.status(413).json({
+        error: "Yuklangan fayl hajmi juda katta (limitdan oshdi). Iltimos, kichikroq rasm yoki video tanlang."
+      });
+    }
+    res.status(err?.status || 500).json({
       error: "Internal Server Error",
       message: err?.message || "Unknown error",
       path: req.originalUrl || req.url
     });
   }
 });
+
+export const config = {
+  maxDuration: 30
+};
 
 export default app;

@@ -24,6 +24,11 @@ import {
   getUzOperatorName,
   writeRecentClient
 } from '../utils/authHelpers';
+import {
+  compressImageFile,
+  readVideoFileForVercel,
+  assertVercelPayloadSafe
+} from '../utils/mediaCompress';
 
 const PageHeader: React.FC<{
   title: string;
@@ -162,15 +167,16 @@ export const ProfileView: React.FC<{
     }
   };
 
-  const handleAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     playSound();
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      persistUserToDb({ ...user, avatar: reader.result as string });
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, 'avatar');
+      persistUserToDb({ ...user, avatar: compressed });
+    } catch (err: any) {
+      notify(err?.message || "Avatar rasmini yuklashda xatolik", 'error');
+    }
   };
 
   const saveProfile = async () => {
@@ -1182,20 +1188,31 @@ export const AdminAddProductView: React.FC<{
   const [images, setImages] = useState<string[]>(productToEdit?.images || []);
   const [videos, setVideos] = useState<string[]>(productToEdit?.videos || []);
 
-  const handleMedia = (e: React.ChangeEvent<HTMLInputElement>, type: 'img' | 'vid') => {
+  const handleMedia = async (e: React.ChangeEvent<HTMLInputElement>, type: 'img' | 'vid') => {
     playSound();
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    notify(`${files.length} ta fayl yuklanmoqda...`, 'info');
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const data = reader.result as string;
-        if (type === 'img') setImages((prev) => [...prev, data]);
-        else setVideos((prev) => [...prev, data]);
-      };
-      reader.readAsDataURL(file);
-    });
+    notify(`${files.length} ta fayl optimallashtirilmoqda...`, 'info');
+    let added = 0;
+    for (const file of files) {
+      try {
+        if (type === 'img') {
+          const compressed = await compressImageFile(file, 'product');
+          setImages((prev) => [...prev, compressed]);
+          added += 1;
+        } else {
+          const dataUrl = await readVideoFileForVercel(file);
+          setVideos((prev) => [...prev, dataUrl]);
+          added += 1;
+        }
+      } catch (err: any) {
+        notify(err?.message || `${file.name} faylini yuklashda xatolik`, 'error');
+      }
+    }
+    e.target.value = '';
+    if (added > 0) {
+      notify(`${added} ta fayl tayyorlandi`, 'success');
+    }
   };
 
   const removeMedia = (idx: number, type: 'img' | 'vid') => {
@@ -1240,14 +1257,15 @@ export const AdminAddProductView: React.FC<{
     };
 
     try {
+      assertVercelPayloadSafe(newProduct);
       await safeFetchJSON('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProduct)
       });
       onAdd(newProduct);
-    } catch {
-      notify("Mahsulotni saqlashda xatolik", 'error');
+    } catch (err: any) {
+      notify(err?.message || "Mahsulotni saqlashda xatolik", 'error');
     }
   };
 
@@ -1612,13 +1630,17 @@ export const ManageBannersView: React.FC<{
     }
   };
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    notify("Rasm yuklanmoqda...", 'info');
-    const reader = new FileReader();
-    reader.onloadend = () => setForm({ ...form, image: reader.result as string });
-    reader.readAsDataURL(file);
+    notify("Banner rasmi siqilmoqda...", 'info');
+    try {
+      const compressed = await compressImageFile(file, 'banner');
+      setForm((prev) => ({ ...prev, image: compressed }));
+      notify("Banner rasmi tayyor", 'success');
+    } catch (err: any) {
+      notify(err?.message || "Banner rasmini yuklashda xatolik", 'error');
+    }
   };
 
   return (
@@ -1912,13 +1934,16 @@ export const PartnershipView: React.FC<{
   const [receipt, setReceipt] = useState<string | null>(null);
   const [type, setType] = useState<'40' | '55' | null>(null);
 
-  const handleReceipt = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    notify("Rasm yuklanmoqda...", 'info');
-    const reader = new FileReader();
-    reader.onloadend = () => setReceipt(reader.result as string);
-    reader.readAsDataURL(file);
+    notify("Chek rasmi siqilmoqda...", 'info');
+    try {
+      const compressed = await compressImageFile(file, 'receipt');
+      setReceipt(compressed);
+    } catch (err: any) {
+      notify(err?.message || "Chek rasmini yuklashda xatolik", 'error');
+    }
   };
 
   const handleSubmit = async () => {
@@ -1928,15 +1953,17 @@ export const PartnershipView: React.FC<{
     }
     playSound();
     try {
+      const payload = { userId: user.telegramId, username: user.username, type, receipt };
+      assertVercelPayloadSafe(payload);
       await safeFetchJSON('/api/partnerships', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.telegramId, username: user.username, type, receipt })
+        body: JSON.stringify(payload)
       });
       notify(t.partnershipSuccess, 'success');
       onBack();
-    } catch {
-      notify("So'rov yuborishda xatolik", 'error');
+    } catch (err: any) {
+      notify(err?.message || "So'rov yuborishda xatolik", 'error');
     }
   };
 

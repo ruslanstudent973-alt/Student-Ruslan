@@ -12,6 +12,7 @@ import {
   calculateGoldSavingsForCart
 } from '../utils/vip';
 import { soundEngine } from '../utils/soundEngine';
+import { compressImageFile } from '../utils/mediaCompress';
 
 export const VipTierBadge: React.FC<{
   tier: VipTier;
@@ -352,16 +353,15 @@ export const VipSubscribeModal: React.FC<{
 
   const totalPrice = VIP_MONTHLY_PRICE * months;
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      notify("Iltimos, faqat rasm faylini yuklang", 'error');
-      return;
+    try {
+      const compressed = await compressImageFile(file, 'receipt');
+      setReceipt(compressed);
+    } catch (err: any) {
+      notify(err?.message || "Rasmni qayta ishlashda xatolik", 'error');
     }
-    const reader = new FileReader();
-    reader.onloadend = () => setReceipt(reader.result as string);
-    reader.readAsDataURL(file);
   };
 
   const handleActivate = async () => {

@@ -33,6 +33,7 @@ import { Product, ProductVideo, User } from '../types';
 import { MARKUP_RATE, CURRENCY_RATE } from '../constants';
 import { SafeImage } from './YuyuPrimitives';
 import { getEffectiveVipStatus, getEffectiveProductPriceUzs } from '../utils/vip';
+import { readVideoFileForVercel, assertVercelPayloadSafe } from '../utils/mediaCompress';
 import { useAdminAccess } from './AdminOnlyGuard';
 
 interface VideoReelsViewProps {
@@ -382,26 +383,17 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('video/')) {
-      notify("Iltimos, faqat video fayl (.mp4, .webm) tanlang", 'error');
-      return;
+    try {
+      const dataUrl = await readVideoFileForVercel(file);
+      setUploadFileName(file.name);
+      setUploadVideoUrl(dataUrl);
+    } catch (err: any) {
+      e.target.value = '';
+      notify(err?.message || "Video faylni o'qishda xatolik", 'error');
     }
-    const maxBytes = 10 * 1024 * 1024; // 10 MB limit for MongoDB BSON safety
-    if (file.size > maxBytes) {
-      notify("Video hajmi 10 MB dan oshmasligi kerak", 'error');
-      return;
-    }
-    setUploadFileName(file.name);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        setUploadVideoUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const handlePublishVideo = async (e: React.FormEvent) => {
@@ -421,18 +413,20 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
     setUploading(true);
     try {
       const linkedProduct = productMap.get(uploadProductId);
+      const payload = {
+        productId: uploadProductId,
+        caption: uploadCaption.trim(),
+        videoUrl: uploadVideoUrl.trim(),
+        posterImage: linkedProduct?.images?.[0] || '',
+        uploaderId: currentUser.telegramId,
+        uploaderName: currentUser.username,
+        uploaderRole: 'admin'
+      };
+      assertVercelPayloadSafe(payload);
       const res = await safeFetchJSON('/api/videos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId: uploadProductId,
-          caption: uploadCaption.trim(),
-          videoUrl: uploadVideoUrl.trim(),
-          posterImage: linkedProduct?.images?.[0] || '',
-          uploaderId: currentUser.telegramId,
-          uploaderName: currentUser.username,
-          uploaderRole: 'admin'
-        })
+        body: JSON.stringify(payload)
       });
       if (res?.video) {
         onVideosChange((prev) => [res.video, ...prev]);
@@ -1405,7 +1399,7 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
                   <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-[#0F294A] dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-900/60 cursor-pointer transition-colors text-center">
                     <Upload size={22} className="text-slate-400" />
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      {uploadFileName ? uploadFileName : 'MP4 yoki WebM video tanlang (10 MB gacha)'}
+                      {uploadFileName ? uploadFileName : 'MP4 yoki WebM video tanlang (2.8 MB gacha)'}
                     </span>
                     <input
                       type="file"
