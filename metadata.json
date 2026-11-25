@@ -3,5 +3,8 @@
   "description": "Xitoydan (1688, Taobao) tovar keltirish bo'yicha sizning ishonchli hamkoringiz.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

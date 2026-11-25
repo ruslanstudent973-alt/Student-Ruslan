@@ -1,8 +1,12 @@
+'use client';
+
 import React, { useState, useEffect, useCallback } from 'react';
+import { MotionConfig, AnimatePresence, motion } from 'framer-motion';
 import { Check, Ban, Bell, Sparkles, Star, ShieldCheck } from 'lucide-react';
 import { Product, View, User, Order, Banner, ProductVideo, CustomRequest } from './types';
 import { MARKUP_RATE, CURRENCY_RATE } from './constants';
 import { DesktopHeader, DesktopFooter, MobileBottomNav } from './components/YuyuPrimitives';
+import { GlobalAmbientCanvas, pageTransitionVariants } from './components/GlassMotionPrimitives';
 import {
   LoadingView, HomeView, CatalogView, SearchView, DetailView
 } from './components/StorefrontViews';
@@ -27,6 +31,32 @@ import {
 import { VipSubscribeModal, AdminVipManagementView } from './components/VipComponents';
 import { AdminAccessView } from './components/AdminAccessView';
 import { AdminAccessProvider, withAdminOnly } from './components/AdminOnlyGuard';
+import {
+  AiAssistantView,
+  FloatingAiDrawer,
+  INITIAL_AI_MESSAGES,
+  AiChatEntry
+} from './components/AiAssistantViews';
+import {
+  LiveAuctionView,
+  MyAuctionsView,
+  AdminAuctionsView,
+  auctionToOrderProduct
+} from './components/AuctionViews';
+import { SellerPayoutsAdminView } from './components/SellerPayoutsAdminView';
+import {
+  TayyorBozorStorefront,
+  AdminTayyorBozorView
+} from './components/TayyorBozorViews';
+import {
+  AffiliateCabinetView,
+  AdminAffiliateView
+} from './components/AffiliateViews';
+import {
+  captureAffiliateRefFromUrl,
+  getStoredAffiliateRef,
+  extractDeepLinkProductId
+} from './utils/affiliateTracking';
 import { getEffectiveVipStatus } from './utils/vip';
 import {
   getSuggestedDeviceLabel,
@@ -47,6 +77,10 @@ const ProtectedAdminSupportView = withAdminOnly(AdminSupportView, { permission: 
 const ProtectedAdminVipManagementView = withAdminOnly(AdminVipManagementView, { permission: 'admin_only' });
 const ProtectedAdminCustomRequestsView = withAdminOnly(AdminCustomRequestsView, { permission: 'admin_only' });
 const ProtectedAdminAccessView = withAdminOnly(AdminAccessView, { permission: 'admin_only' });
+const ProtectedAdminAuctionsView = withAdminOnly(AdminAuctionsView, { permission: 'admin_only' });
+const ProtectedAdminSellerPayoutsView = withAdminOnly(SellerPayoutsAdminView, { permission: 'admin_only' });
+const ProtectedAdminTayyorBozorView = withAdminOnly(AdminTayyorBozorView, { permission: 'admin_only' });
+const ProtectedAdminAffiliateView = withAdminOnly(AdminAffiliateView, { permission: 'admin_only' });
 
 const translations = {
   uz: {
@@ -70,6 +104,7 @@ const translations = {
     verifying: 'Tekshirilmoqda',
     shipped: "Yo'lda",
     delivered: 'Yetib keldi',
+    cancelled: 'Bekor qilindi',
     copied: 'Nusxalandi',
     paymentTitle: "To'lovni rasmiylashtirish",
     uploadReceipt: 'Chek rasmini yuklash',
@@ -133,9 +168,6 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
   if (adminToken) {
     baseHeaders['x-admin-device-token'] = adminToken;
   }
-  const method = (options?.method || 'GET').toUpperCase();
-  const maxAttempts = method === 'GET' || method === 'HEAD' ? Math.max(1, retries) : 1;
-
   const mergedOptions: RequestInit = {
     ...options,
     headers: {
@@ -144,36 +176,29 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
     }
   };
 
-  for (let i = 0; i < maxAttempts; i++) {
+  for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
     try {
-      const res = await fetch(url, mergedOptions);
+      const res = await fetch(url, { ...mergedOptions, signal: options?.signal || controller.signal });
+      window.clearTimeout(timeoutId);
       const contentType = (res.headers.get('content-type') || '').toLowerCase();
 
       if (!res.ok) {
-        if (res.status === 413) {
-          const err: any = new Error(
-            "Yuklangan fayl hajmi juda katta (Vercel 4.5 MB limiti). Iltimos, kichikroq rasm/video tanlang yoki video uchun URL kiriting."
-          );
-          err.status = 413;
-          throw err;
-        }
-        if (res.status === 504) {
-          const err: any = new Error(
-            "Server javobi kechikdi (504). Iltimos, birozdan so'ng qayta urinib ko'ring."
-          );
-          err.status = 504;
-          throw err;
-        }
         const text = await res.text();
         let errorDetail = text.trim().startsWith('<')
           ? `Server vaqtincha javob bermadi (${res.status})`
-          : text.substring(0, 180);
+          : text.substring(0, 140);
         try {
           const json = JSON.parse(text);
           errorDetail = json.error || json.message || errorDetail;
         } catch {}
         const err: any = new Error(errorDetail);
         err.status = res.status;
+        // Do not retry 4xx client validation/auth errors
+        if (res.status >= 400 && res.status < 500) {
+          throw err;
+        }
         throw err;
       }
 
@@ -184,14 +209,15 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
       const text = await res.text();
       const trimmed = text.trim();
       if (!trimmed || trimmed.startsWith('<')) {
-        throw new Error("Server JSON o'rniga HTML qaytardi (qayta urinilmoqda)");
+        throw new Error('Server JSON o‘rniga HTML qaytardi (qayta urinilmoqda)');
       }
       return JSON.parse(trimmed);
     } catch (e: any) {
+      window.clearTimeout(timeoutId);
       if (e?.status && e.status >= 400 && e.status < 500) {
         throw e;
       }
-      if (i === maxAttempts - 1) {
+      if (i === retries - 1) {
         console.warn(`Fetch (${url}) tugallanmadi:`, e?.message);
         throw e;
       }
@@ -201,14 +227,9 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
 };
 
 const App: React.FC = () => {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    try {
-      const saved = localStorage.getItem('yuyu_theme');
-      if (saved === 'dark' || saved === 'light') return saved;
-    } catch {}
-    return 'light';
-  });
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => soundEngine.isEnabled());
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [themeHydrated, setThemeHydrated] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [currentView, setCurrentView] = useState<View>('loading');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCatalogCategory, setSelectedCatalogCategory] = useState<string>('Barchasi');
@@ -217,11 +238,14 @@ const App: React.FC = () => {
     size: string;
     quantity?: number;
     cartItemId?: string;
+    auctionId?: string;
   } | null>(null);
+  const [returnAfterAuthView, setReturnAfterAuthView] = useState<View | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: string }[]>([]);
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+  const [aiMessages, setAiMessages] = useState<AiChatEntry[]>(INITIAL_AI_MESSAGES);
 
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [promoCodes, setPromoCodes] = useState<any[]>([]);
@@ -237,6 +261,10 @@ const App: React.FC = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [productVideos, setProductVideos] = useState<ProductVideo[]>([]);
   const [customRequests, setCustomRequests] = useState<CustomRequest[]>([]);
+  const [pendingSellerPayoutActionsCount, setPendingSellerPayoutActionsCount] = useState<number>(0);
+  const [pendingResaleCount, setPendingResaleCount] = useState<number>(0);
+  const [pendingAffiliatePayoutsCount, setPendingAffiliatePayoutsCount] = useState<number>(0);
+  const [pendingDeepLinkProductId, setPendingDeepLinkProductId] = useState<string | null>(null);
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const [isVipModalOpen, setIsVipModalOpen] = useState(false);
 
@@ -277,7 +305,25 @@ const App: React.FC = () => {
     return () => document.removeEventListener('click', handleGlobalClick, true);
   }, []);
 
+  // Hydrate browser-only preferences & deep-link pathname after mount to prevent SSR hydration mismatch
   useEffect(() => {
+    captureAffiliateRefFromUrl();
+    try {
+      const savedTheme = localStorage.getItem('yuyu_theme');
+      if (savedTheme === 'dark' || savedTheme === 'light') {
+        setTheme(savedTheme);
+      }
+    } catch {}
+    setThemeHydrated(true);
+    setSoundEnabled(soundEngine.isEnabled());
+    const deepId = extractDeepLinkProductId(window.location.pathname);
+    if (deepId) {
+      setPendingDeepLinkProductId(deepId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!themeHydrated) return;
     const root = document.documentElement;
     if (theme === 'dark') {
       root.classList.add('dark');
@@ -287,7 +333,7 @@ const App: React.FC = () => {
     try {
       localStorage.setItem('yuyu_theme', theme);
     } catch {}
-  }, [theme]);
+  }, [theme, themeHydrated]);
 
   const sendTelegramNotification = async (message: string) => {
     try {
@@ -345,6 +391,34 @@ const App: React.FC = () => {
       if (sessionId && data?.carts && Array.isArray(data.carts[sessionId])) {
         setCart(data.carts[sessionId]);
       }
+      if (readStoredAdminDeviceToken()) {
+        safeFetchJSON('/api/admin/seller-payouts', undefined, 0)
+          .then((payoutRes) => {
+            if (typeof payoutRes?.summary?.actionNeededCount === 'number') {
+              setPendingSellerPayoutActionsCount(payoutRes.summary.actionNeededCount);
+            }
+          })
+          .catch(() => {});
+        safeFetchJSON('/api/admin/resale', undefined, 0)
+          .then((resaleRes) => {
+            if (Array.isArray(resaleRes?.listings)) {
+              const count = resaleRes.listings.filter(
+                (l: any) => l.status === 'pending_moderation' || l.status === 'reserved'
+              ).length;
+              setPendingResaleCount(count);
+            }
+          })
+          .catch(() => {});
+        safeFetchJSON('/api/admin/affiliates', undefined, 0)
+          .then((affRes) => {
+            if (Array.isArray(affRes?.payouts)) {
+              setPendingAffiliatePayoutsCount(
+                affRes.payouts.filter((p: any) => p.status === 'pending').length
+              );
+            }
+          })
+          .catch(() => {});
+      }
     } catch (e: any) {
       console.warn('MongoDB fetch retry exhausted:', e?.message);
     } finally {
@@ -397,17 +471,35 @@ const App: React.FC = () => {
           return;
         }
       }
+      if (window.location.pathname === '/auction') {
+        setCurrentView('auction');
+        return;
+      }
       if (currentUser) {
+        if (pendingDeepLinkProductId) {
+          const found = allProducts.find((p) => p.id === pendingDeepLinkProductId);
+          if (found) {
+            setSelectedProduct(found);
+            setPendingDeepLinkProductId(null);
+            setCurrentView('detail');
+            return;
+          }
+        }
         if (window.location.pathname === '/find-product') {
           setCurrentView('find_product');
+        } else if (window.location.pathname === '/tayyor-bozor') {
+          setCurrentView('tayyor_bozor');
         } else {
           setCurrentView('home');
         }
       } else {
+        if (window.location.pathname === '/tayyor-bozor') {
+          setReturnAfterAuthView('tayyor_bozor');
+        }
         setCurrentView('auth');
       }
     }
-  }, [currentView, isInitialLoaded, currentUser]);
+  }, [currentView, isInitialLoaded, currentUser, allProducts, pendingDeepLinkProductId]);
 
   const filteredProducts = allProducts.filter((p) => {
     const matchesSearch =
@@ -453,7 +545,23 @@ const App: React.FC = () => {
     await fetchData(savedUser.telegramId);
     soundEngine.playWelcome();
     notify(`Xush kelibsiz, ${savedUser.username}!`, 'success');
-    setCurrentView('home');
+    if (pendingDeepLinkProductId) {
+      const found = allProducts.find((p) => p.id === pendingDeepLinkProductId);
+      if (found) {
+        setSelectedProduct(found);
+        setPendingDeepLinkProductId(null);
+        setReturnAfterAuthView(null);
+        setCurrentView('detail');
+      } else {
+        const nextView = returnAfterAuthView || 'home';
+        setReturnAfterAuthView(null);
+        setCurrentView(nextView);
+      }
+    } else {
+      const nextView = returnAfterAuthView || 'home';
+      setReturnAfterAuthView(null);
+      setCurrentView(nextView);
+    }
 
     sendTelegramNotification(
       `🆕 YUYU Shop foydalanuvchi kirdi:\n👤 Ism: ${savedUser.username}\n📱 Tel: ${savedUser.phoneNumber || savedUser.telegramId}\n👑 Admin: ${savedUser.isAdmin ? 'Ha' : "Yo'q"}`
@@ -488,7 +596,8 @@ const App: React.FC = () => {
       timestamp: Date.now(),
       receiptImage,
       address,
-      cashbackUsed: Math.max(0, Math.round(cashbackUsed || 0))
+      cashbackUsed: Math.max(0, Math.round(cashbackUsed || 0)),
+      referredBy: getStoredAffiliateRef() || undefined
     };
 
     try {
@@ -511,6 +620,22 @@ const App: React.FC = () => {
         const remainingCart = cart.filter((item) => item.id !== cartItemId);
         setCart(remainingCart);
         syncCartToMongo(remainingCart);
+      }
+
+      if (pendingOrderData.auctionId) {
+        try {
+          await safeFetchJSON(`/api/auctions/${pendingOrderData.auctionId}/claim`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': currentUser.telegramId
+            },
+            body: JSON.stringify({
+              userId: currentUser.telegramId,
+              orderId: savedOrder.id
+            })
+          });
+        } catch {}
       }
 
       setOrders((prev) => [savedOrder, ...prev]);
@@ -639,7 +764,14 @@ const App: React.FC = () => {
     playClickSound();
     setCurrentView(view);
     try {
-      const targetPath = view === 'find_product' ? '/find-product' : '/';
+      const targetPath =
+        view === 'find_product'
+          ? '/find-product'
+          : view === 'auction'
+          ? '/auction'
+          : view === 'tayyor_bozor'
+          ? '/tayyor-bozor'
+          : '/';
       if (window.location.pathname !== targetPath) {
         window.history.replaceState({}, '', targetPath);
       }
@@ -674,11 +806,46 @@ const App: React.FC = () => {
     navigate('auth');
   };
 
-  if (currentView === 'loading') return <LoadingView />;
+  if (currentView === 'loading') {
+    return (
+      <MotionConfig reducedMotion="user">
+        <GlobalAmbientCanvas />
+        <LoadingView onRetry={() => fetchData()} />
+      </MotionConfig>
+    );
+  }
+
+  if (currentView === 'auction' && !currentUser) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <GlobalAmbientCanvas />
+        <div className="min-h-screen text-slate-900 dark:text-slate-100">
+          <div className="max-w-[1360px] mx-auto px-5 sm:px-6 lg:px-10 py-6 lg:py-10">
+            <LiveAuctionView
+              currentUser={null}
+              onNavigate={(view) => {
+                if (view === 'auction') return;
+                setReturnAfterAuthView(view);
+                setCurrentView('auth');
+              }}
+              onRequireLogin={() => {
+                setReturnAfterAuthView('auction');
+                setCurrentView('auth');
+              }}
+              notify={notify}
+              safeFetchJSON={safeFetchJSON}
+            />
+          </div>
+          <ToastStack notifications={notifications} />
+        </div>
+      </MotionConfig>
+    );
+  }
 
   if (currentView === 'auth' || !currentUser) {
     return (
-      <>
+      <MotionConfig reducedMotion="user">
+        <GlobalAmbientCanvas />
         <AuthView
           t={t}
           onAuthSuccess={handleAuthSuccess}
@@ -691,17 +858,19 @@ const App: React.FC = () => {
           safeFetchJSON={safeFetchJSON}
         />
         <ToastStack notifications={notifications} />
-      </>
+      </MotionConfig>
     );
   }
 
   return (
+    <MotionConfig reducedMotion="user">
+    <GlobalAmbientCanvas />
     <AdminAccessProvider
       currentUser={currentUser}
       safeFetchJSON={safeFetchJSON}
       notify={notify}
     >
-    <div className="min-h-screen flex flex-col bg-[#F8FAFC] dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 pb-20 md:pb-0">
+    <div className="min-h-screen flex flex-col bg-transparent text-slate-900 dark:text-slate-100 pb-20 md:pb-0">
       <DesktopHeader
         currentView={currentView}
         currentUser={currentUser}
@@ -709,7 +878,15 @@ const App: React.FC = () => {
         onNavigate={navigate}
       />
 
-      <main className="flex-1 w-full max-w-[1360px] mx-auto px-5 sm:px-6 lg:px-10 py-8 lg:py-10 fade-in">
+      <main className="flex-1 w-full max-w-[1360px] mx-auto px-5 sm:px-6 lg:px-10 py-8 lg:py-10">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentView}
+            variants={pageTransitionVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
         {currentView === 'home' && (
           <HomeView
             t={t}
@@ -798,6 +975,61 @@ const App: React.FC = () => {
             }}
             onOpenVipModal={() => setIsVipModalOpen(true)}
             onVideosChange={setProductVideos}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+          />
+        )}
+
+        {currentView === 'ai_assistant' && (
+          <AiAssistantView
+            messages={aiMessages}
+            onMessagesChange={setAiMessages}
+            products={allProducts}
+            currentUser={currentUser}
+            onProductClick={(p) => {
+              playClickSound();
+              setSelectedProduct(p);
+              navigate('detail');
+            }}
+            onAddToCart={addToCart}
+            onNavigate={navigate}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+          />
+        )}
+
+        {currentView === 'auction' && (
+          <LiveAuctionView
+            currentUser={currentUser}
+            onNavigate={navigate}
+            onRequireLogin={() => {
+              setReturnAfterAuthView('auction');
+              navigate('auth');
+            }}
+            onOpenVipModal={() => setIsVipModalOpen(true)}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+            isAdminAuthorized={currentUser.isAdmin}
+          />
+        )}
+
+        {currentView === 'my_auctions' && (
+          <MyAuctionsView
+            currentUser={currentUser}
+            onBack={() => navigate('profile')}
+            onNavigate={navigate}
+            onOpenVipModal={() => setIsVipModalOpen(true)}
+            onClaimWonAuction={(auc) => {
+              playClickSound();
+              const orderProduct = auctionToOrderProduct(auc);
+              setPendingOrderData({
+                product: orderProduct,
+                size: "Auksion yutug'i",
+                quantity: 1,
+                auctionId: auc.id
+              });
+              navigate('payment');
+            }}
             notify={notify}
             safeFetchJSON={safeFetchJSON}
           />
@@ -902,8 +1134,32 @@ const App: React.FC = () => {
           <OrdersView
             t={t}
             orders={orders.filter((o) => o.userId === currentUser.telegramId)}
+            products={allProducts}
+            currentUser={currentUser}
             onNavigate={navigate}
             setReceiptOrder={setReceiptOrder}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+          />
+        )}
+
+        {currentView === 'tayyor_bozor' && (
+          <TayyorBozorStorefront
+            currentUser={currentUser}
+            onNavigate={navigate}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+            onRefreshData={() => fetchData(currentUser.telegramId)}
+          />
+        )}
+
+        {currentView === 'affiliate_cabinet' && (
+          <AffiliateCabinetView
+            user={currentUser}
+            products={allProducts}
+            onBack={() => navigate('profile')}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
           />
         )}
 
@@ -925,6 +1181,9 @@ const App: React.FC = () => {
             onOpenVipModal={() => setIsVipModalOpen(true)}
             pendingCustomRequestsCount={pendingCustomRequestsCount}
             pricedCustomRequestsCount={myPricedCustomRequestsCount}
+            pendingSellerPayoutActionsCount={pendingSellerPayoutActionsCount}
+            pendingResaleCount={pendingResaleCount}
+            pendingAffiliatePayoutsCount={pendingAffiliatePayoutsCount}
           />
         )}
 
@@ -1157,11 +1416,68 @@ const App: React.FC = () => {
             safeFetchJSON={safeFetchJSON}
           />
         )}
+        {currentView === 'admin_auctions' && (
+          <ProtectedAdminAuctionsView
+            onBack={() => navigate('profile')}
+            onNavigate={navigate}
+            onUnauthorizedBack={() => navigate('profile')}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+            sendTelegramNotification={sendTelegramNotification}
+          />
+        )}
+        {currentView === 'admin_seller_payouts' && (
+          <ProtectedAdminSellerPayoutsView
+            onBack={() => navigate('profile')}
+            onNavigate={navigate}
+            onUnauthorizedBack={() => navigate('profile')}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+            onActionCountChange={setPendingSellerPayoutActionsCount}
+          />
+        )}
+        {currentView === 'admin_tayyor_bozor' && (
+          <ProtectedAdminTayyorBozorView
+            onBack={() => navigate('profile')}
+            onUnauthorizedBack={() => navigate('profile')}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+            onPendingCountChange={setPendingResaleCount}
+          />
+        )}
+        {currentView === 'admin_affiliates' && (
+          <ProtectedAdminAffiliateView
+            onBack={() => navigate('profile')}
+            onUnauthorizedBack={() => navigate('profile')}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+            onPendingPayoutsChange={setPendingAffiliatePayoutsCount}
+          />
+        )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {currentView === 'catalog' && (
         <FloatingPhotoRequestButton onClick={() => navigate('find_product')} />
       )}
+
+      <FloatingAiDrawer
+        currentView={currentView}
+        messages={aiMessages}
+        onMessagesChange={setAiMessages}
+        products={allProducts}
+        currentUser={currentUser}
+        onProductClick={(p) => {
+          playClickSound();
+          setSelectedProduct(p);
+          navigate('detail');
+        }}
+        onAddToCart={addToCart}
+        onNavigate={navigate}
+        notify={notify}
+        safeFetchJSON={safeFetchJSON}
+      />
 
       <DesktopFooter
         theme={theme}
@@ -1198,30 +1514,38 @@ const App: React.FC = () => {
       <ToastStack notifications={notifications} />
     </div>
     </AdminAccessProvider>
+    </MotionConfig>
   );
 };
 
 const ToastStack: React.FC<{
   notifications: { id: string; message: string; type: string }[];
 }> = ({ notifications }) => (
-  <div className="fixed top-20 right-5 z-[200] space-y-2 pointer-events-none">
-    {notifications.map((n) => (
-      <div
-        key={n.id}
-        className={`px-4 py-3 rounded-xl shadow-lg flex items-center gap-2.5 pointer-events-auto text-xs font-semibold ${
-          n.type === 'success'
-            ? 'bg-emerald-700 text-white'
-            : n.type === 'error'
-            ? 'bg-red-600 text-white'
-            : 'bg-[#0F294A] text-white'
-        }`}
-      >
-        {n.type === 'success' && <Check size={15} />}
-        {n.type === 'error' && <Ban size={15} />}
-        {n.type === 'info' && <Bell size={15} />}
-        <span>{n.message}</span>
-      </div>
-    ))}
+  <div className="fixed top-20 right-5 z-[200] space-y-2.5 pointer-events-none">
+    <AnimatePresence initial={false}>
+      {notifications.map((n) => (
+        <motion.div
+          key={n.id}
+          layout
+          initial={{ opacity: 0, x: 42, scale: 0.92 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: 36, scale: 0.92 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+          className={`px-4 py-3 rounded-2xl backdrop-blur-2xl border shadow-[0_14px_34px_rgba(15,23,42,0.16)] flex items-center gap-2.5 pointer-events-auto text-xs font-semibold ${
+            n.type === 'success'
+              ? 'bg-emerald-600/90 border-emerald-300/40 text-white'
+              : n.type === 'error'
+              ? 'bg-red-600/90 border-red-300/40 text-white'
+              : 'bg-[#0F294A]/90 border-white/25 text-white'
+          }`}
+        >
+          {n.type === 'success' && <Check size={15} />}
+          {n.type === 'error' && <Ban size={15} />}
+          {n.type === 'info' && <Bell size={15} />}
+          <span>{n.message}</span>
+        </motion.div>
+      ))}
+    </AnimatePresence>
   </div>
 );
 

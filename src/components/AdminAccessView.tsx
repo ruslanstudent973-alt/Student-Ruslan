@@ -24,7 +24,9 @@ import {
   readStoredAdminDeviceToken,
   writeStoredAdminDeviceToken
 } from '../utils/authHelpers';
+import { motion } from 'framer-motion';
 import { useAdminAccess } from './AdminOnlyGuard';
+import { StaggerGrid, StaggerItem } from './GlassMotionPrimitives';
 
 function formatShortDate(iso?: string | null): string {
   if (!iso) return '—';
@@ -243,15 +245,17 @@ export const AdminAccessView: React.FC<{
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200/70 dark:border-slate-800/70">
         <div className="flex items-center gap-3.5">
-          <button
+          <motion.button
             type="button"
+            whileHover={{ x: -2 }}
+            whileTap={{ scale: 0.94 }}
             onClick={onBack}
-            className="p-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="p-2.5 yuyu-glass-subtle rounded-xl hover:bg-white/85 dark:hover:bg-slate-800/80 transition-colors"
           >
             <ChevronLeft size={18} />
-          </button>
+          </motion.button>
           <div>
             <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
               Admin ruxsatlari va qurilmalar
@@ -262,41 +266,49 @@ export const AdminAccessView: React.FC<{
           </div>
         </div>
 
-        <button
+        <motion.button
           type="button"
+          whileHover={{ y: -1, scale: 1.02 }}
+          whileTap={{ scale: 0.96 }}
           onClick={() => loadOverview(true)}
           disabled={refreshing}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
         >
           <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
           <span>Yangilash</span>
-        </button>
+        </motion.button>
       </div>
 
       {/* Quick Summary Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Faol ruxsatli qurilmalar</p>
-          <p className="font-display text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
-            {activeDevices.length} ta
-          </p>
-        </div>
-        <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Faol taklif havolalari</p>
-          <p className="font-display text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
-            {activeInvitesCount} ta
-          </p>
-        </div>
-        <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">O'zingizning kompyuter usuli</p>
-          <p className="text-sm font-semibold text-[#0F294A] dark:text-blue-400">
-            Ctrl + Shift + A · Logo 5x · /?admin=1
-          </p>
-        </div>
-      </div>
+      <StaggerGrid className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StaggerItem>
+          <motion.div whileHover={{ y: -2 }} className="yuyu-glass p-5 rounded-3xl space-y-1">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Faol ruxsatli qurilmalar</p>
+            <p className="font-display text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+              {activeDevices.length} ta
+            </p>
+          </motion.div>
+        </StaggerItem>
+        <StaggerItem>
+          <motion.div whileHover={{ y: -2 }} className="yuyu-glass p-5 rounded-3xl space-y-1">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Faol taklif havolalari</p>
+            <p className="font-display text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+              {activeInvitesCount} ta
+            </p>
+          </motion.div>
+        </StaggerItem>
+        <StaggerItem>
+          <motion.div whileHover={{ y: -2 }} className="yuyu-glass p-5 rounded-3xl space-y-1">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">O'zingizning kompyuter usuli</p>
+            <p className="text-sm font-semibold text-[#0F294A] dark:text-blue-400">
+              Ctrl + Shift + A · Logo 5x · /?admin=1
+            </p>
+          </motion.div>
+        </StaggerItem>
+      </StaggerGrid>
 
       {!loading && !currentDeviceId && (
-        <div className="bg-[#EEF4FA] dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="yuyu-glass border-blue-300/70 dark:border-blue-800/60 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <Monitor size={20} className="text-[#0F294A] dark:text-blue-400 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
@@ -329,7 +341,7 @@ export const AdminAccessView: React.FC<{
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Left 7 Columns: Authorized Devices List */}
           <div className="lg:col-span-7 space-y-6">
-            <section className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5">
+            <section className="yuyu-glass rounded-3xl p-6 space-y-5">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <ShieldCheck size={20} className="text-emerald-600 dark:text-emerald-400" />
@@ -449,7 +461,7 @@ export const AdminAccessView: React.FC<{
             </section>
 
             {/* Invite Links History */}
-            <section className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4">
+            <section className="yuyu-glass rounded-3xl p-6 space-y-4">
               <div className="flex items-center gap-2.5">
                 <Link2 size={19} className="text-[#0F294A] dark:text-blue-400" />
                 <div>
@@ -467,7 +479,7 @@ export const AdminAccessView: React.FC<{
                   Hali bir martalik taklif havolasi yaratilmagan.
                 </p>
               ) : (
-                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                <div className="divide-y divide-slate-200/60 dark:divide-slate-800/70">
                   {invites.slice(0, 12).map((inv) => {
                     const isExpired = new Date(inv.expiresAt).getTime() <= Date.now();
                     const isActive = !inv.revoked && !inv.usedAt && !isExpired;
@@ -503,7 +515,7 @@ export const AdminAccessView: React.FC<{
                             <button
                               type="button"
                               onClick={() => handleCopy(url, inv.id)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-800 whitespace-nowrap"
                             >
                               {copiedKey === inv.id ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
                               <span>{copiedKey === inv.id ? 'Nusxalandi' : 'Nusxalash'}</span>
@@ -529,7 +541,7 @@ export const AdminAccessView: React.FC<{
           {/* Right 5 Columns: Generate Invite + Update Password */}
           <div className="lg:col-span-5 space-y-6">
             {/* Generate One-Time Invite */}
-            <section className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5">
+            <section className="yuyu-glass rounded-3xl p-6 space-y-5">
               <div className="space-y-1">
                 <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
                   Boshqa odamga ruxsat berish
@@ -549,7 +561,7 @@ export const AdminAccessView: React.FC<{
                     value={inviteLabel}
                     onChange={(e) => setInviteLabel(e.target.value)}
                     placeholder="Masalan: Menejer Aziz noutbuki"
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#0F294A] dark:focus:border-blue-500"
+                    className="w-full yuyu-glass-input rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#0F294A] dark:focus:border-blue-500"
                   />
                 </div>
 
@@ -571,7 +583,7 @@ export const AdminAccessView: React.FC<{
                         className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap ${
                           inviteHours === opt.hours
                             ? 'bg-[#0F294A] dark:bg-blue-600 text-white border-[#0F294A] dark:border-blue-600'
-                            : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            : 'yuyu-glass-subtle text-slate-600 dark:text-slate-300 hover:bg-white/90 dark:hover:bg-slate-800'
                         }`}
                       >
                         {opt.label}
@@ -580,23 +592,25 @@ export const AdminAccessView: React.FC<{
                   </div>
                 </div>
 
-                <button
+                <motion.button
                   type="submit"
+                  whileHover={{ y: -1, scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
                   disabled={creatingInvite}
-                  className="w-full py-3 px-4 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+                  className="w-full py-3 px-4 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 shadow-md shadow-blue-950/15"
                 >
                   {creatingInvite ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                   <span>Bir martalik havola yaratish</span>
-                </button>
+                </motion.button>
               </form>
 
               {newlyCreatedLink && (
-                <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 space-y-2.5">
+                <div className="p-4 rounded-2xl bg-emerald-50/85 dark:bg-emerald-950/35 border border-emerald-200 dark:border-emerald-800/60 space-y-2.5">
                   <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                     <Clock size={14} />
                     <span>Yangi taklif havolasi tayyor (faqat 1 marta ishlaydi)</span>
                   </div>
-                  <div className="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-200 break-all select-all">
+                  <div className="bg-white/90 dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-200 break-all select-all">
                     {newlyCreatedLink}
                   </div>
                   <button
@@ -612,7 +626,7 @@ export const AdminAccessView: React.FC<{
             </section>
 
             {/* Change Admin Password */}
-            <section className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4">
+            <section className="yuyu-glass rounded-3xl p-6 space-y-4">
               <div className="flex items-center gap-2.5">
                 <KeyRound size={19} className="text-amber-600 dark:text-amber-400" />
                 <div>

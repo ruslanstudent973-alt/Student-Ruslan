@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ShieldAlert, ArrowLeft, Loader2, KeyRound, ShieldCheck, Eye, EyeOff, X } from 'lucide-react';
 import { AdminDevice, User, View } from '../types';
 import {
@@ -22,6 +23,8 @@ export const ADMIN_ONLY_VIEWS: ReadonlySet<View> = new Set<View>([
   'admin-support',
   'admin_vip',
   'admin_custom_requests',
+  'admin_auctions',
+  'admin_seller_payouts',
   'admin_access'
 ]);
 
@@ -58,20 +61,25 @@ export const AdminAccessProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ currentUser, safeFetchJSON, notify, children }) => {
   const [authorizedDevice, setAuthorizedDevice] = useState<AdminDevice | null>(null);
-  const [hasLocalAdminToken, setHasLocalAdminToken] = useState<boolean>(() =>
-    Boolean(readStoredAdminDeviceToken())
-  );
-  const [checkingAccess, setCheckingAccess] = useState<boolean>(() =>
-    Boolean(readStoredAdminDeviceToken())
-  );
+  const [hasLocalAdminToken, setHasLocalAdminToken] = useState<boolean>(false);
+  const [checkingAccess, setCheckingAccess] = useState<boolean>(false);
 
   // Hidden owner device unlock modal (Ctrl + Shift + A or /?admin=1 while signed in)
   const [isUnlockOpen, setIsUnlockOpen] = useState(false);
-  const [unlockLabel, setUnlockLabel] = useState(() => getSuggestedDeviceLabel());
+  const [unlockLabel, setUnlockLabel] = useState('Mening kompyuterim');
   const [unlockPassword, setUnlockPassword] = useState('');
   const [showUnlockPassword, setShowUnlockPassword] = useState(false);
   const [unlockLoading, setUnlockLoading] = useState(false);
   const [unlockError, setUnlockError] = useState('');
+
+  useEffect(() => {
+    setUnlockLabel(getSuggestedDeviceLabel());
+    const token = readStoredAdminDeviceToken();
+    if (token) {
+      setHasLocalAdminToken(true);
+      setCheckingAccess(true);
+    }
+  }, []);
 
   const revokeLocalAccess = useCallback(() => {
     writeStoredAdminDeviceToken('');
@@ -217,96 +225,110 @@ export const AdminAccessProvider: React.FC<{
     >
       {children}
 
-      {isUnlockOpen && (
-        <div
-          className="fixed inset-0 z-[150] bg-black/65 backdrop-blur-md flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Admin qurilmasini tasdiqlash"
-        >
-          <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#0F294A]/10 dark:bg-blue-500/15 text-[#0F294A] dark:text-blue-400 flex items-center justify-center">
-                  <KeyRound size={18} />
+      <AnimatePresence>
+        {isUnlockOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[150] bg-slate-950/50 backdrop-blur-md flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Admin qurilmasini tasdiqlash"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+              className="w-full max-w-md yuyu-glass-strong rounded-3xl overflow-hidden"
+            >
+              <div className="px-6 py-4 border-b border-white/60 dark:border-slate-700/60 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#0F294A]/10 dark:bg-blue-500/15 text-[#0F294A] dark:text-blue-400 flex items-center justify-center">
+                    <KeyRound size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
+                      Admin qurilmasini tasdiqlash
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Faqat egasi ruxsat bergan qurilmalar uchun
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
-                    Admin qurilmasini tasdiqlash
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Faqat egasi ruxsat bergan qurilmalar uchun
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsUnlockOpen(false)}
-                className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleAuthorizeCurrentDevice} className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Qurilma nomi
-                </label>
-                <input
-                  type="text"
-                  value={unlockLabel}
-                  onChange={(e) => setUnlockLabel(e.target.value)}
-                  placeholder="Masalan: Mening asosiy kompyuterim"
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#0F294A]"
-                />
+                <button
+                  type="button"
+                  onClick={() => setIsUnlockOpen(false)}
+                  className="w-8 h-8 rounded-xl yuyu-glass-subtle text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors"
+                >
+                  <X size={16} />
+                </button>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Maxfiy admin paroli
-                </label>
-                <div className="relative">
+              <form onSubmit={handleAuthorizeCurrentDevice} className="p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Qurilma nomi
+                  </label>
                   <input
-                    type={showUnlockPassword ? 'text' : 'password'}
-                    autoFocus
-                    value={unlockPassword}
-                    onChange={(e) => {
-                      setUnlockPassword(e.target.value);
-                      if (unlockError) setUnlockError('');
-                    }}
-                    placeholder="Parolni kiriting"
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 pr-10 text-sm font-mono text-slate-900 dark:text-white outline-none focus:border-[#0F294A]"
+                    type="text"
+                    value={unlockLabel}
+                    onChange={(e) => setUnlockLabel(e.target.value)}
+                    placeholder="Masalan: Mening asosiy kompyuterim"
+                    className="w-full yuyu-glass-input rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-[#0F294A]"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowUnlockPassword((v) => !v)}
-                    aria-label="Parolni ko'rsatish"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showUnlockPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
                 </div>
-              </div>
 
-              {unlockError && (
-                <p className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl px-3.5 py-2.5">
-                  {unlockError}
-                </p>
-              )}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Maxfiy admin paroli
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showUnlockPassword ? 'text' : 'password'}
+                      autoFocus
+                      value={unlockPassword}
+                      onChange={(e) => {
+                        setUnlockPassword(e.target.value);
+                        if (unlockError) setUnlockError('');
+                      }}
+                      placeholder="Parolni kiriting"
+                      className="w-full yuyu-glass-input rounded-xl px-4 py-2.5 pr-10 text-sm font-mono text-slate-900 dark:text-white outline-none focus:border-[#0F294A]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUnlockPassword((v) => !v)}
+                      aria-label="Parolni ko'rsatish"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showUnlockPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
 
-              <button
-                type="submit"
-                disabled={unlockLoading}
-                className="w-full py-3 px-4 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
-              >
-                {unlockLoading ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                <span>Ruxsatni faollashtirish</span>
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+                {unlockError && (
+                  <p className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-50/80 dark:bg-red-950/40 border border-red-200/80 dark:border-red-900/50 rounded-xl px-3.5 py-2.5">
+                    {unlockError}
+                  </p>
+                )}
+
+                <motion.button
+                  whileHover={{ scale: 1.015 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="submit"
+                  disabled={unlockLoading}
+                  className="w-full py-3 px-4 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 shadow-lg shadow-[#0F294A]/20"
+                >
+                  {unlockLoading ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                  <span>Ruxsatni faollashtirish</span>
+                </motion.button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </AdminAccessContext.Provider>
   );
 };
@@ -350,7 +372,7 @@ export function withAdminOnly<P extends object>(
         (typeof (restProps as any).onBack === 'function' ? (restProps as any).onBack : undefined);
 
       return (
-        <div className="max-w-lg mx-auto my-16 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center space-y-5">
+        <div className="max-w-lg mx-auto my-16 yuyu-glass-strong rounded-3xl p-8 text-center space-y-5">
           <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 mx-auto flex items-center justify-center">
             <ShieldAlert size={28} />
           </div>

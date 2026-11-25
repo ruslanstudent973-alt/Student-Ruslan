@@ -1,35 +1,76 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Star, ChevronLeft, ChevronRight, MessageCircle, Send, X, ShieldCheck,
   Package, Truck, Zap, CreditCard, Loader2, Play, PlusCircle, Share2, Heart,
-  SlidersHorizontal, ArrowRight, Check, CheckCircle2, RotateCcw, Crown, Lock
+  SlidersHorizontal, ArrowRight, Check, CheckCircle2, RotateCcw, Crown, Lock, Gavel
 } from 'lucide-react';
 import { Product, Banner, View, User } from '../types';
 import { MARKUP_RATE, CURRENCY_RATE } from '../constants';
 import {
   YuyuMonogram, SafeImage, ProductCard, YUYU_HERO_IMAGE
 } from './YuyuPrimitives';
+import {
+  StaggerGrid, StaggerItem, GlassReveal, Tilt3DGlassCard
+} from './GlassMotionPrimitives';
 import { CartRecommendationsSection } from './CartRecommendationsSection';
 import { PhotoSourcingBanner } from './CustomRequestComponents';
 import { getEffectiveVipStatus } from '../utils/vip';
+import { ProductAiAdvisor } from './AiAssistantViews';
 
 export { AuthView } from './AuthView';
 
 export const MAIN_REF_LINK = 'https://t.me/yuyu_shop_bot';
 
-export const LoadingView: React.FC = () => (
-  <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] flex flex-col items-center justify-center p-8 text-center">
-    <div className="mb-5">
-      <YuyuMonogram size={56} />
+export const LoadingView: React.FC<{ onRetry?: () => void }> = ({ onRetry }) => {
+  const [isSlowLoad, setIsSlowLoad] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsSlowLoad(true), 10000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 280, damping: 22 }}
+        className="yuyu-glass-strong rounded-3xl border px-10 py-9 flex flex-col items-center max-w-xs w-full"
+      >
+        <motion.div
+          animate={{ y: [0, -6, 0] }}
+          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+          className="mb-5"
+        >
+          <YuyuMonogram size={56} />
+        </motion.div>
+        <h1 className="font-display text-3xl font-bold text-[#0F294A] dark:text-white tracking-tight mb-2">
+          YUYU Shop
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {isSlowLoad ? 'Ulanish biroz kechikmoqda...' : 'Platforma yuklanmoqda...'}
+        </p>
+        {isSlowLoad && (
+          <button
+            type="button"
+            onClick={() => {
+              setIsSlowLoad(false);
+              if (onRetry) {
+                onRetry();
+              } else {
+                window.location.reload();
+              }
+            }}
+            className="mt-5 min-h-[42px] px-5 py-2 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-semibold transition-colors whitespace-nowrap"
+          >
+            Qayta yuklash
+          </button>
+        )}
+      </motion.div>
     </div>
-    <h1 className="font-display text-3xl font-bold text-[#0F294A] dark:text-white tracking-tight mb-2">
-      YUYU Shop
-    </h1>
-    <p className="text-sm text-slate-500 dark:text-slate-400">
-      Platforma yuklanmoqda...
-    </p>
-  </div>
-);
+  );
+};
 
 
 export const HomeView: React.FC<{
@@ -67,67 +108,94 @@ export const HomeView: React.FC<{
 
   return (
     <div className="space-y-14">
-      {/* Section 1: Desktop Storefront Hero */}
-      <section className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/90 dark:border-slate-800 overflow-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-12 items-stretch">
-          <div className="lg:col-span-6 p-8 sm:p-10 lg:p-14 flex flex-col justify-center space-y-6">
-            <p className="text-xs font-semibold tracking-wide text-[#0F294A] dark:text-blue-400">
-              YUYU Shop · Yangi mavsum to'plami
-            </p>
-            <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white leading-[1.1] tracking-tight">
-              {activeBanner?.title || "Xitoydan saralangan mahsulotlar — to'g'ridan-to'g'ri sizga"}
-            </h1>
-            <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-lg">
-              {activeBanner?.subtitle || "1688, Taobao va Pinduoduo platformalaridan ishonchli yetkazib berish va qulay narxlar."}
-            </p>
-            <div className="flex flex-wrap items-center gap-4 pt-2">
-              <button
-                type="button"
-                onClick={() => onNavigate((activeBanner?.link as View) || 'catalog')}
-                className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold transition-colors whitespace-nowrap"
-              >
-                <span>Katalogni ko'rish</span>
-                <ArrowRight size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('search')}
-                className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-semibold transition-colors whitespace-nowrap"
-              >
-                <Search size={16} />
-                <span>Mahsulot izlash</span>
-              </button>
+      {/* Section 1: Frosted Glass Storefront Hero */}
+      <GlassReveal>
+        <section className="yuyu-glass rounded-3xl border overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-12 items-stretch">
+            <div className="lg:col-span-6 p-8 sm:p-10 lg:p-14 flex flex-col justify-center space-y-6">
+              <p className="text-xs font-semibold tracking-wide text-[#2563EB] dark:text-blue-400">
+                YUYU Shop · Yangi mavsum to'plami
+              </p>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeBanner?.id || 'default-hero'}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.28 }}
+                  className="space-y-4"
+                >
+                  <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white leading-[1.1] tracking-tight">
+                    {activeBanner?.title || "Xitoydan saralangan mahsulotlar — to'g'ridan-to'g'ri sizga"}
+                  </h1>
+                  <p className="text-base text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg">
+                    {activeBanner?.subtitle || "1688, Taobao va Pinduoduo platformalaridan ishonchli yetkazib berish va qulay narxlar."}
+                  </p>
+                </motion.div>
+              </AnimatePresence>
+              <div className="flex flex-wrap items-center gap-3.5 pt-2">
+                <motion.button
+                  type="button"
+                  whileHover={{ y: -2, scale: 1.02 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => onNavigate((activeBanner?.link as View) || 'catalog')}
+                  className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold shadow-lg shadow-[#0F294A]/20 transition-colors whitespace-nowrap"
+                >
+                  <span>Katalogni ko'rish</span>
+                  <ArrowRight size={16} />
+                </motion.button>
+                <motion.button
+                  type="button"
+                  whileHover={{ y: -2, scale: 1.02 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => onNavigate('auction')}
+                  className="inline-flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-blue-500/12 dark:bg-blue-500/20 backdrop-blur-xl border border-blue-400/35 text-[#2563EB] dark:text-blue-300 hover:bg-blue-500/20 text-sm font-semibold transition-colors whitespace-nowrap"
+                >
+                  <Gavel size={16} />
+                  <span>Kim oshdi</span>
+                </motion.button>
+                <motion.button
+                  type="button"
+                  whileHover={{ y: -2, scale: 1.02 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => onNavigate('search')}
+                  className="inline-flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-white/75 dark:bg-slate-800/70 backdrop-blur-xl border border-white/95 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 text-sm font-semibold shadow-sm transition-colors whitespace-nowrap"
+                >
+                  <Search size={16} />
+                  <span>Mahsulot izlash</span>
+                </motion.button>
+              </div>
+
+              {banners && banners.length > 1 && (
+                <div className="flex items-center gap-2 pt-4">
+                  {banners.map((b, idx) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setActiveBannerIdx(idx)}
+                      aria-label={`Banner ${idx + 1}`}
+                      className={`h-1.5 rounded-full transition-all ${
+                        idx === activeBannerIdx
+                          ? 'w-8 bg-[#2563EB] dark:bg-blue-400'
+                          : 'w-2.5 bg-slate-300/80 dark:bg-slate-700 hover:bg-slate-400'
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
-            {banners && banners.length > 1 && (
-              <div className="flex items-center gap-2 pt-4">
-                {banners.map((b, idx) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => setActiveBannerIdx(idx)}
-                    aria-label={`Banner ${idx + 1}`}
-                    className={`h-1.5 rounded-full transition-all ${
-                      idx === activeBannerIdx
-                        ? 'w-8 bg-[#0F294A] dark:bg-blue-400'
-                        : 'w-2.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
+            <div className="lg:col-span-6 relative min-h-[280px] lg:min-h-[420px] bg-white/30 dark:bg-slate-900/40 overflow-hidden">
+              <SafeImage
+                src={activeBanner?.image || YUYU_HERO_IMAGE}
+                alt={activeBanner?.title || 'YUYU Shop vitrinasi'}
+                fallbackLabel="YUYU Shop"
+                className="w-full h-full object-cover lg:absolute lg:inset-0 transition-transform duration-700 hover:scale-105"
+              />
+            </div>
           </div>
-
-          <div className="lg:col-span-6 relative min-h-[280px] lg:min-h-[420px] bg-slate-100 dark:bg-slate-900">
-            <SafeImage
-              src={activeBanner?.image || YUYU_HERO_IMAGE}
-              alt={activeBanner?.title || 'YUYU Shop vitrinasi'}
-              fallbackLabel="YUYU Shop"
-              className="w-full h-full object-cover lg:absolute lg:inset-0"
-            />
-          </div>
-        </div>
-      </section>
+        </section>
+      </GlassReveal>
 
       {/* Optional Flash Sale Collection (only if admin enabled flash sales) */}
       {flashProducts.length > 0 && (
@@ -159,39 +227,51 @@ export const HomeView: React.FC<{
           </button>
         </div>
 
-        {/* Interactive Category Segmented Bar */}
+        {/* Interactive Category Segmented Bar with sliding glass highlight */}
         {categories.length > 1 && (
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setActiveCategory(cat)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap shrink-0 transition-colors border ${
-                  activeCategory === cat
-                    ? 'bg-[#0F294A] dark:bg-blue-600 text-white border-[#0F294A] dark:border-blue-600'
-                    : 'bg-white dark:bg-[#111827] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            {categories.map((cat) => {
+              const active = activeCategory === cat;
+              return (
+                <motion.button
+                  key={cat}
+                  type="button"
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`relative px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 transition-colors border ${
+                    active
+                      ? 'text-white border-transparent shadow-md shadow-blue-600/20'
+                      : 'yuyu-glass-subtle text-slate-700 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800/80'
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="home-category-active"
+                      transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                      className="absolute inset-0 rounded-xl bg-[#0F294A] dark:bg-blue-600 -z-10"
+                    />
+                  )}
+                  <span className="relative z-10">{cat}</span>
+                </motion.button>
+              );
+            })}
           </div>
         )}
 
         {displayedProducts.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StaggerGrid key={activeCategory} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {displayedProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                currentUser={currentUser}
-                onClick={() => onProductClick(product)}
-              />
+              <StaggerItem key={product.id}>
+                <ProductCard
+                  product={product}
+                  currentUser={currentUser}
+                  onClick={() => onProductClick(product)}
+                />
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerGrid>
         ) : (
-          <div className="py-16 text-center bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-sm">
+          <div className="py-16 text-center yuyu-glass rounded-3xl border text-slate-500 dark:text-slate-400 text-sm">
             Ushbu toifada hozircha mahsulotlar mavjud emas.
           </div>
         )}
@@ -207,50 +287,56 @@ export const HomeView: React.FC<{
         onQuickAdd={onAddToCart}
       />
 
-      {/* Section 3: Service & Logistics Proof Strip */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-        <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200/90 dark:border-slate-800 flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl bg-[#EEF4FA] dark:bg-slate-800 text-[#0F294A] dark:text-blue-400 flex items-center justify-center shrink-0">
-            <Truck size={20} />
-          </div>
-          <div className="space-y-1">
-            <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white">
-              7–15 kunlik logistika
-            </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              Xitoy omboridan O'zbekistongacha muntazam avia va avto reyslar orqali yetkazish.
-            </p>
-          </div>
-        </div>
+      {/* Section 3: Service & Logistics Proof Strip (3D Glass Cards) */}
+      <StaggerGrid className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+        <StaggerItem>
+          <Tilt3DGlassCard maxTilt={5} className="yuyu-glass p-6 rounded-3xl border flex items-start gap-4">
+            <div className="w-11 h-11 rounded-2xl bg-blue-500/12 dark:bg-blue-500/20 text-[#2563EB] dark:text-blue-400 flex items-center justify-center shrink-0">
+              <Truck size={20} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white">
+                7–15 kunlik logistika
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                Xitoy omboridan O'zbekistongacha muntazam avia va avto reyslar orqali yetkazish.
+              </p>
+            </div>
+          </Tilt3DGlassCard>
+        </StaggerItem>
 
-        <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200/90 dark:border-slate-800 flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl bg-[#EEF4FA] dark:bg-slate-800 text-[#0F294A] dark:text-blue-400 flex items-center justify-center shrink-0">
-            <ShieldCheck size={20} />
-          </div>
-          <div className="space-y-1">
-            <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white">
-              100% yuk sug'urtasi
-            </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              Har bir buyurtma jo'natishdan oldin tekshiriladi va trek raqami taqdim etiladi.
-            </p>
-          </div>
-        </div>
+        <StaggerItem>
+          <Tilt3DGlassCard maxTilt={5} className="yuyu-glass p-6 rounded-3xl border flex items-start gap-4">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/12 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <ShieldCheck size={20} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white">
+                100% yuk sug'urtasi
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                Har bir buyurtma jo'natishdan oldin tekshiriladi va trek raqami taqdim etiladi.
+              </p>
+            </div>
+          </Tilt3DGlassCard>
+        </StaggerItem>
 
-        <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200/90 dark:border-slate-800 flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl bg-[#EEF4FA] dark:bg-slate-800 text-[#0F294A] dark:text-blue-400 flex items-center justify-center shrink-0">
-            <Package size={20} />
-          </div>
-          <div className="space-y-1">
-            <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white">
-              Bevosita fabrika narxlari
-            </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              1688, Taobao va Pinduoduo manbalaridan ortiqcha vositachilarsiz shaffof hisob.
-            </p>
-          </div>
-        </div>
-      </section>
+        <StaggerItem>
+          <Tilt3DGlassCard maxTilt={5} className="yuyu-glass p-6 rounded-3xl border flex items-start gap-4">
+            <div className="w-11 h-11 rounded-2xl bg-violet-500/12 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+              <Package size={20} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white">
+                Bevosita fabrika narxlari
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                1688, Taobao va Pinduoduo manbalaridan ortiqcha vositachilarsiz shaffof hisob.
+              </p>
+            </div>
+          </Tilt3DGlassCard>
+        </StaggerItem>
+      </StaggerGrid>
     </div>
   );
 };
@@ -371,14 +457,15 @@ export const CatalogView: React.FC<{
 
         <div className="flex flex-wrap items-center gap-2.5">
           {onNavigate && (
-            <button
+            <motion.button
               type="button"
+              whileTap={{ scale: 0.96 }}
               onClick={() => onNavigate('search')}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border yuyu-glass-subtle text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white/85 dark:hover:bg-slate-800 transition-colors"
             >
               <Search size={15} />
               <span>Qidiruv</span>
-            </button>
+            </motion.button>
           )}
           <label className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
             Saralash:
@@ -386,7 +473,7 @@ export const CatalogView: React.FC<{
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-[#0F294A]"
+            className="yuyu-glass-input border rounded-xl px-3.5 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-[#2563EB]"
           >
             <option value="default">Standart</option>
             <option value="popular">Ommabop</option>
@@ -406,17 +493,18 @@ export const CatalogView: React.FC<{
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-8 items-start">
-        {/* Left Category Sidebar */}
-        <aside className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 lg:sticky lg:top-24 space-y-4">
+        {/* Left Frosted Glass Category Sidebar */}
+        <aside className="yuyu-glass p-5 rounded-3xl border lg:sticky lg:top-24 space-y-4">
           <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
             Toifalar
           </h2>
           <div className="flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible no-scrollbar">
             {onNavigate && (
-              <button
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.97 }}
                 onClick={() => onNavigate('videos')}
-                className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap shrink-0 text-left bg-[#070B14] dark:bg-blue-950/70 text-white hover:bg-[#0F294A] border border-slate-800 dark:border-blue-500/40"
+                className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap shrink-0 text-left bg-[#070B14]/90 backdrop-blur-md dark:bg-blue-950/70 text-white hover:bg-[#0F294A] border border-slate-800 dark:border-blue-500/40"
               >
                 <span className="inline-flex items-center gap-2 truncate">
                   <Play size={14} className="fill-current text-blue-400 shrink-0" />
@@ -425,7 +513,7 @@ export const CatalogView: React.FC<{
                 <span className="font-mono tabular-nums text-xs text-blue-300">
                   {videoCount}
                 </span>
-              </button>
+              </motion.button>
             )}
 
             {categories.map((cat) => {
@@ -435,14 +523,15 @@ export const CatalogView: React.FC<{
                   : products.filter((p) => p.category === cat).length;
               const active = selectedCategory === cat;
               return (
-                <button
+                <motion.button
                   key={cat}
                   type="button"
+                  whileTap={{ scale: 0.97 }}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap shrink-0 text-left ${
+                  className={`flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap shrink-0 text-left ${
                     active
-                      ? 'bg-[#0F294A] dark:bg-blue-600 text-white'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-[#0F294A] dark:bg-blue-600 text-white shadow-md shadow-[#0F294A]/15'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-white/75 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   <span className="truncate">{cat}</span>
@@ -453,22 +542,27 @@ export const CatalogView: React.FC<{
                   >
                     {count}
                   </span>
-                </button>
+                </motion.button>
               );
             })}
           </div>
         </aside>
 
-        {/* Right Product Grid */}
+        {/* Right Product Grid with staggered cascade */}
         <div>
           {sortedAndFiltered.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+            <StaggerGrid
+              key={`${selectedCategory}-${sortBy}`}
+              className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6"
+            >
               {sortedAndFiltered.map((p) => (
-                <ProductCard key={p.id} product={p} currentUser={currentUser} onClick={() => onProductClick(p)} />
+                <StaggerItem key={p.id}>
+                  <ProductCard product={p} currentUser={currentUser} onClick={() => onProductClick(p)} />
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGrid>
           ) : (
-            <div className="py-20 text-center bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="py-20 text-center yuyu-glass rounded-3xl border space-y-3">
               <Package size={36} className="mx-auto text-slate-300 dark:text-slate-600" />
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Hozircha bu toifada mahsulotlar yo'q.
@@ -510,8 +604,8 @@ export const SearchView: React.FC<{
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 items-start">
-        {/* Persistent Desktop Filter Panel */}
-        <aside className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 lg:sticky lg:top-24 space-y-6">
+        {/* Persistent Frosted Glass Filter Panel */}
+        <aside className="yuyu-glass p-6 rounded-3xl border lg:sticky lg:top-24 space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-slate-900 dark:text-white font-display font-semibold text-sm">
               <SlidersHorizontal size={16} />
@@ -520,7 +614,7 @@ export const SearchView: React.FC<{
             <button
               type="button"
               onClick={resetFilters}
-              className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-[#0F294A] dark:hover:text-blue-400 transition-colors"
+              className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors"
             >
               <RotateCcw size={12} />
               <span>Tozalash</span>
@@ -537,12 +631,12 @@ export const SearchView: React.FC<{
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Mahsulot nomi..."
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 pl-10 pr-3 text-sm text-slate-900 dark:text-white outline-none focus:border-[#0F294A]"
+                className="w-full yuyu-glass-input border rounded-xl py-2.5 pl-10 pr-3 text-sm text-slate-900 dark:text-white outline-none focus:border-[#2563EB]"
               />
             </div>
           </div>
 
-          <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="space-y-3 pt-4 border-t border-white/60 dark:border-slate-700/60">
             <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
               {t.price} (UZS)
             </p>
@@ -553,7 +647,7 @@ export const SearchView: React.FC<{
                   type="number"
                   value={filters.minPrice}
                   onChange={(e) => setFilters({ ...filters, minPrice: Number(e.target.value) })}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-mono tabular-nums outline-none focus:border-[#0F294A]"
+                  className="w-full yuyu-glass-input border rounded-xl px-3 py-2 text-xs font-mono tabular-nums outline-none focus:border-[#2563EB]"
                 />
               </div>
               <div className="space-y-1">
@@ -562,31 +656,32 @@ export const SearchView: React.FC<{
                   type="number"
                   value={filters.maxPrice}
                   onChange={(e) => setFilters({ ...filters, maxPrice: Number(e.target.value) })}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-mono tabular-nums outline-none focus:border-[#0F294A]"
+                  className="w-full yuyu-glass-input border rounded-xl px-3 py-2 text-xs font-mono tabular-nums outline-none focus:border-[#2563EB]"
                 />
               </div>
             </div>
           </div>
 
-          <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="space-y-3 pt-4 border-t border-white/60 dark:border-slate-700/60">
             <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">{t.rating}</p>
             <div className="grid grid-cols-2 gap-2">
               {[0, 3, 4, 4.5].map((r) => (
-                <button
+                <motion.button
                   key={r}
                   type="button"
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => {
                     playSound();
                     setFilters({ ...filters, rating: r });
                   }}
-                  className={`py-2 px-3 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                  className={`py-2 px-3 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
                     filters.rating === r
-                      ? 'bg-[#0F294A] dark:bg-blue-600 text-white'
-                      : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      ? 'bg-[#0F294A] dark:bg-blue-600 text-white shadow-sm'
+                      : 'yuyu-glass-subtle border text-slate-600 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800'
                   }`}
                 >
                   {r === 0 ? 'Barchasi' : `${r}+ yulduz`}
-                </button>
+                </motion.button>
               ))}
             </div>
           </div>
@@ -601,13 +696,15 @@ export const SearchView: React.FC<{
           </div>
 
           {results.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+            <StaggerGrid className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
               {results.map((p) => (
-                <ProductCard key={p.id} product={p} currentUser={currentUser} onClick={() => onProductClick(p)} />
+                <StaggerItem key={p.id}>
+                  <ProductCard product={p} currentUser={currentUser} onClick={() => onProductClick(p)} />
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGrid>
           ) : (
-            <div className="py-20 text-center bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="py-20 text-center yuyu-glass rounded-3xl border space-y-3">
               <Search size={36} className="mx-auto text-slate-300 dark:text-slate-600" />
               <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
                 So'rovingiz bo'yicha mahsulot topilmadi
@@ -615,7 +712,7 @@ export const SearchView: React.FC<{
               <button
                 type="button"
                 onClick={resetFilters}
-                className="text-xs font-semibold text-[#0F294A] dark:text-blue-400 hover:underline"
+                className="text-xs font-semibold text-[#2563EB] dark:text-blue-400 hover:underline"
               >
                 Filtrlarni qayta tiklash
               </button>
@@ -733,40 +830,53 @@ export const DetailView: React.FC<{
 
       {/* Contiguous 12-Column Desktop PDP */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-        {/* Left 7 Columns: Gallery */}
+        {/* Left 7 Columns: Frosted Glass Gallery */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="aspect-[4/3] w-full bg-[#F1F5F9] dark:bg-slate-800/70 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden flex items-center justify-center p-6">
-            {isVideo(mediaItems[activeMedia]) ? (
-              <video
-                src={mediaItems[activeMedia]}
-                controls
-                autoPlay
-                className="max-h-full max-w-full rounded-xl object-contain"
-              />
-            ) : (
-              <SafeImage
-                src={mediaItems[activeMedia]}
-                alt={product.name}
-                fallbackLabel={product.name}
-                className="max-h-full max-w-full object-contain"
-              />
-            )}
+          <div className="aspect-[4/3] w-full yuyu-glass rounded-3xl border overflow-hidden flex items-center justify-center p-6">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeMedia}
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.22 }}
+                className="w-full h-full flex items-center justify-center"
+              >
+                {isVideo(mediaItems[activeMedia]) ? (
+                  <video
+                    src={mediaItems[activeMedia]}
+                    controls
+                    autoPlay
+                    className="max-h-full max-w-full rounded-2xl object-contain"
+                  />
+                ) : (
+                  <SafeImage
+                    src={mediaItems[activeMedia]}
+                    alt={product.name}
+                    fallbackLabel={product.name}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           {mediaItems.length > 1 && (
             <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
               {mediaItems.map((item, idx) => (
-                <button
+                <motion.button
                   key={idx}
                   type="button"
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.94 }}
                   onClick={() => {
                     playSound();
                     setActiveMedia(idx);
                   }}
-                  className={`w-20 h-20 rounded-xl overflow-hidden border-2 shrink-0 bg-[#F1F5F9] dark:bg-slate-800 transition-all ${
+                  className={`w-20 h-20 rounded-2xl overflow-hidden border-2 shrink-0 yuyu-glass-subtle transition-all ${
                     activeMedia === idx
-                      ? 'border-[#0F294A] dark:border-blue-500'
-                      : 'border-transparent opacity-65 hover:opacity-100'
+                      ? 'border-[#2563EB] dark:border-blue-400 shadow-md'
+                      : 'border-white/70 dark:border-slate-700 opacity-70 hover:opacity-100'
                   }`}
                 >
                   {isVideo(item) ? (
@@ -780,14 +890,14 @@ export const DetailView: React.FC<{
                       className="w-full h-full object-cover"
                     />
                   )}
-                </button>
+                </motion.button>
               ))}
             </div>
           )}
         </div>
 
-        {/* Right 5 Columns: Contiguous Sticky Purchase Module */}
-        <div className="lg:col-span-5 lg:sticky lg:top-24 bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-7 sm:p-8 space-y-6">
+        {/* Right 5 Columns: Contiguous Sticky Frosted Glass Purchase Module */}
+        <div className="lg:col-span-5 lg:sticky lg:top-24 yuyu-glass rounded-3xl border p-7 sm:p-8 space-y-6">
           <div className="space-y-3">
             {/* Unboxed quiet metadata */}
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -1026,6 +1136,19 @@ export const DetailView: React.FC<{
         </div>
       </div>
 
+      {/* AI Size & Product Q&A Advisor */}
+      <ProductAiAdvisor
+        product={product}
+        currentUser={currentUser}
+        selectedSize={selectedSize}
+        onSelectSize={(sz) => {
+          playSound();
+          setSelectedSize(sz);
+        }}
+        notify={notify}
+        safeFetchJSON={safeFetchJSON}
+      />
+
       {/* Customer Reviews Section */}
       <ReviewsSection
         reviews={product.reviews}
@@ -1072,8 +1195,12 @@ const ReviewModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-[#111827] w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 p-7 space-y-6 shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.94, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="yuyu-glass-strong w-full max-w-lg rounded-3xl border p-7 space-y-6"
+      >
         <div className="flex justify-between items-center">
           <h3 className="font-display text-xl font-bold text-slate-900 dark:text-white">
             Sharh qoldirish
@@ -1081,7 +1208,7 @@ const ReviewModal: React.FC<{
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+            className="p-2 text-slate-500 hover:bg-white/70 dark:hover:bg-slate-800 rounded-xl"
           >
             <X size={18} />
           </button>
@@ -1091,9 +1218,11 @@ const ReviewModal: React.FC<{
           <p className="text-xs font-semibold text-slate-500">Mahsulotni baholang</p>
           <div className="flex gap-1.5">
             {[1, 2, 3, 4, 5].map((star) => (
-              <button
+              <motion.button
                 key={star}
                 type="button"
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.9 }}
                 onClick={() => {
                   playSound();
                   setRating(star);
@@ -1105,7 +1234,7 @@ const ReviewModal: React.FC<{
                   fill={star <= rating ? 'currentColor' : 'none'}
                   className={star <= rating ? 'text-amber-400' : 'text-slate-300 dark:text-slate-600'}
                 />
-              </button>
+              </motion.button>
             ))}
           </div>
         </div>
@@ -1116,7 +1245,7 @@ const ReviewModal: React.FC<{
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Mahsulot sifati va yetkazib berish haqida yozing..."
-            className="w-full h-32 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm outline-none focus:border-[#0F294A] resize-none"
+            className="w-full h-32 yuyu-glass-input border rounded-2xl p-4 text-sm outline-none focus:border-[#2563EB] resize-none"
           />
         </div>
 
@@ -1124,21 +1253,22 @@ const ReviewModal: React.FC<{
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-300"
+            className="px-5 py-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-300"
           >
             Bekor qilish
           </button>
-          <button
+          <motion.button
             type="button"
+            whileTap={{ scale: 0.96 }}
             onClick={handleSubmit}
             disabled={isSubmitting}
             className="px-6 py-2.5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl flex items-center gap-2 text-sm disabled:opacity-50"
           >
             {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             <span>Yuborish</span>
-          </button>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };
@@ -1148,7 +1278,7 @@ const ReviewsSection: React.FC<{
   onWriteReview: () => void;
   playSound: () => void;
 }> = ({ reviews, onWriteReview, playSound }) => (
-  <section className="pt-8 border-t border-slate-200 dark:border-slate-800 space-y-6">
+  <section className="pt-8 border-t border-white/70 dark:border-slate-800 space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="space-y-1">
         <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
@@ -1158,35 +1288,37 @@ const ReviewsSection: React.FC<{
           Haqiqiy foydalanuvchilar fikr-mulohazalari
         </p>
       </div>
-      <button
+      <motion.button
         type="button"
+        whileHover={{ y: -1 }}
+        whileTap={{ scale: 0.96 }}
         onClick={() => {
           playSound();
           onWriteReview();
         }}
-        className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-white transition-colors"
+        className="px-4 py-2.5 rounded-xl border yuyu-glass-subtle hover:bg-white/85 dark:hover:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-white transition-colors"
       >
         Sharh yozish
-      </button>
+      </motion.button>
     </div>
 
     {!reviews || reviews.length === 0 ? (
-      <div className="py-12 text-center bg-white dark:bg-[#111827] rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+      <div className="py-12 text-center yuyu-glass rounded-3xl border border-dashed space-y-2">
         <MessageCircle size={28} className="mx-auto text-slate-300 dark:text-slate-600" />
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Hali sharhlar qoldirilmagan. Birinchi bo'lib fikr bildiring.
         </p>
       </div>
     ) : (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {reviews.map((r) => (
-          <div
+          <StaggerItem
             key={r.id}
-            className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3"
+            className="yuyu-glass p-6 rounded-3xl border space-y-3"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#EEF4FA] dark:bg-slate-800 text-[#0F294A] dark:text-blue-400 flex items-center justify-center font-semibold text-sm">
+                <div className="w-9 h-9 rounded-full bg-blue-500/12 dark:bg-slate-800 text-[#2563EB] dark:text-blue-400 flex items-center justify-center font-semibold text-sm">
                   {(r.username || 'M')[0].toUpperCase()}
                 </div>
                 <div>
@@ -1207,12 +1339,12 @@ const ReviewsSection: React.FC<{
               </div>
               <span className="text-xs font-mono tabular-nums text-slate-400">{r.date}</span>
             </div>
-            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               {r.comment}
             </p>
-          </div>
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerGrid>
     )}
   </section>
 );

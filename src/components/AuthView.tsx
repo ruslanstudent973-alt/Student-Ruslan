@@ -82,7 +82,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   // Device authorization state
   const [authorizedDevice, setAuthorizedDevice] = useState<AdminDevice | null>(null);
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
-  const [unlockLabel, setUnlockLabel] = useState(() => getSuggestedDeviceLabel());
+  const [unlockLabel, setUnlockLabel] = useState('Mening kompyuterim');
   const [unlockMasterPassword, setUnlockMasterPassword] = useState('');
   const [showUnlockPassword, setShowUnlockPassword] = useState(false);
   const [unlockLoading, setUnlockLoading] = useState(false);
@@ -92,8 +92,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [errorAction, setErrorAction] = useState<'switch_register' | 'switch_login' | null>(null);
-  const [recentClient, setRecentClient] = useState<RecentClientProfile | null>(() => readRecentClient());
+  const [recentClient, setRecentClient] = useState<RecentClientProfile | null>(null);
   const [hasPlayedEntrance, setHasPlayedEntrance] = useState(false);
+
+  useEffect(() => {
+    setUnlockLabel(getSuggestedDeviceLabel());
+    setRecentClient(readRecentClient());
+  }, []);
 
   // Secret 5-tap logo counter
   const logoClickTimesRef = useRef<number[]>([]);

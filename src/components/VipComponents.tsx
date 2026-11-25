@@ -12,7 +12,7 @@ import {
   calculateGoldSavingsForCart
 } from '../utils/vip';
 import { soundEngine } from '../utils/soundEngine';
-import { compressImageFile } from '../utils/mediaCompress';
+import { uploadMediaSmart } from '../utils/r2MediaUpload';
 
 export const VipTierBadge: React.FC<{
   tier: VipTier;
@@ -356,11 +356,21 @@ export const VipSubscribeModal: React.FC<{
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      notify("Iltimos, faqat rasm faylini yuklang", 'error');
+      return;
+    }
+    notify("Chek rasmi yuklanmoqda...", 'info');
     try {
-      const compressed = await compressImageFile(file, 'receipt');
-      setReceipt(compressed);
+      const uploadedUrl = await uploadMediaSmart(file, {
+        folder: 'receipts',
+        maxDim: 1400,
+        quality: 0.84
+      });
+      setReceipt(uploadedUrl);
+      notify("Chek rasmi yuklandi", 'success');
     } catch (err: any) {
-      notify(err?.message || "Rasmni qayta ishlashda xatolik", 'error');
+      notify(err?.message || "Chek rasmini yuklashda xatolik", 'error');
     }
   };
 
@@ -766,7 +776,7 @@ export const AdminVipManagementView: React.FC<{
           <button
             type="button"
             onClick={onBack}
-            className="p-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="p-2.5 yuyu-glass-subtle rounded-xl hover:bg-white/85 dark:hover:bg-slate-800/80 transition-colors"
           >
             <ChevronLeft size={18} />
           </button>
@@ -785,7 +795,7 @@ export const AdminVipManagementView: React.FC<{
         <button
           type="button"
           onClick={loadOverview}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl yuyu-glass-subtle text-xs font-semibold hover:bg-white/85 dark:hover:bg-slate-800/80 transition-colors"
         >
           <RefreshCw size={14} className={loadingOverview ? 'animate-spin' : ''} />
           <span>Yangilash</span>
@@ -842,7 +852,7 @@ export const AdminVipManagementView: React.FC<{
       </div>
 
       {/* Filters & Search Toolbar */}
-      <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="yuyu-glass p-5 rounded-3xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-2">
           {[
             { id: 'ALL', label: 'Barchasi' },
@@ -874,7 +884,7 @@ export const AdminVipManagementView: React.FC<{
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Telefon raqam yoki ism bo'yicha qidirish..."
-            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none focus:border-[#0F294A] dark:focus:border-amber-400"
+            className="w-full yuyu-glass-input rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none focus:border-[#0F294A] dark:focus:border-amber-400"
           />
         </div>
       </div>
@@ -884,7 +894,7 @@ export const AdminVipManagementView: React.FC<{
         {/* Left 7 cols: User list */}
         <div className="lg:col-span-7 space-y-3">
           {filteredUsers.length === 0 ? (
-            <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 py-16 text-center space-y-2">
+            <div className="yuyu-glass rounded-3xl py-16 text-center space-y-2">
               <Crown size={32} className="mx-auto text-slate-300 dark:text-slate-600" />
               <p className="text-sm text-slate-500">Tanlangan filtr bo'yicha foydalanuvchi topilmadi.</p>
               {tierFilter !== 'ALL' && (
@@ -909,7 +919,7 @@ export const AdminVipManagementView: React.FC<{
                   className={`w-full text-left p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
                     isSelected
                       ? 'bg-[#070B14] text-white border-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.18)]'
-                      : 'bg-white dark:bg-[#111827] border-slate-200 dark:border-slate-800 hover:border-amber-400/60'
+                      : 'yuyu-glass hover:border-amber-400/60'
                   }`}
                 >
                   <div className="space-y-1 min-w-0">
@@ -1102,7 +1112,7 @@ export const AdminVipManagementView: React.FC<{
 
       {/* Recent VIP Subscriptions Log */}
       {vipRequests.length > 0 && (
-        <section className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <section className="yuyu-glass p-6 rounded-3xl space-y-4">
           <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
             So'nggi VIP obuna to'lovlari ({vipRequests.length})
           </h2>

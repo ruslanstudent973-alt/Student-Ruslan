@@ -3,11 +3,29 @@ import express from "express";
 import cors from "cors";
 import crypto from "crypto";
 import { MongoClient, Db } from "mongodb";
+import {
+  runAiShoppingChat,
+  runAiVisualSearch,
+  runAiProductHelp,
+  runAiAdminCopy,
+  AiCatalogItem
+} from "./geminiService";
+import { registerAuctionRoutes } from "./auctionRoutes";
+import {
+  registerTayyorAffiliateRoutes,
+  applyAffiliateOnOrderCreate,
+  applyAffiliateOnOrderDelivered,
+  applyAffiliateOnOrderCancelled
+} from "./tayyorAffiliateRoutes";
 
 const existingEnvUri = (process.env.MONGODB_URI || "").trim();
+const existingGeminiKey = (process.env.GEMINI_API_KEY || "").trim();
 dotenv.config({
   override: !existingEnvUri || !/^mongodb(\+srv)?:\/\//.test(existingEnvUri)
 });
+if (existingGeminiKey && !(process.env.GEMINI_API_KEY || "").trim()) {
+  process.env.GEMINI_API_KEY = existingGeminiKey;
+}
 
 const app = express();
 
@@ -192,8 +210,7 @@ const initialSeedData = {
 };
 
 // MongoDB Atlas connection (database: saytim)
-const RAW_DB_NAME = (process.env.MONGODB_DB || "").trim();
-const DB_NAME = RAW_DB_NAME && !/[/\\. "$*<>:|?]/.test(RAW_DB_NAME) ? RAW_DB_NAME : "saytim";
+const DB_NAME = process.env.MONGODB_DB || "saytim";
 
 const globalForMongo = globalThis as typeof globalThis & {
   __mongoClientPromise?: Promise<MongoClient> | null;
@@ -313,34 +330,18 @@ async function ensureSeeded(db: Db): Promise<void> {
 }
 
 async function requireDb(): Promise<Db> {
-  const rawUri =
-    process.env.MONGODB_URI ||
-    process.env.MONGO_URI ||
-    process.env.MONGODB_URL ||
-    process.env.MONGO_URL ||
-    process.env.DATABASE_URL ||
-    process.env.VITE_MONGODB_URI;
-  const uri = rawUri
-    ? rawUri
-        .trim()
-        .replace(/^(MONGODB_URI|MONGO_URI|MONGODB_URL|MONGO_URL|DATABASE_URL|VITE_MONGODB_URI)\s*=\s*/i, "")
-        .replace(/^\[|\]$/g, "")
-        .replace(/^["']|["']$/g, "")
-        .trim()
-    : "";
+  const rawUri = process.env.MONGODB_URI;
+  const uri = rawUri ? rawUri.trim().replace(/^\[|\]$/g, "").replace(/^["']|["']$/g, "") : "";
   if (!uri) {
-    throw new Error("MONGODB_URI muhit o'zgaruvchisi topilmadi — Vercel Settings > Environment Variables bo'limiga kiriting va Redeploy qiling");
+    throw new Error("MONGODB_URI muhit o'zgaruvchisi topilmadi");
   }
 
   try {
     if (!globalForMongo.__mongoClientPromise) {
-      const isVercel = Boolean(process.env.VERCEL);
       const client = new MongoClient(uri, {
         serverSelectionTimeoutMS: 8000,
         connectTimeoutMS: 8000,
-        maxPoolSize: isVercel ? 5 : 10,
-        minPoolSize: 0,
-        maxIdleTimeMS: isVercel ? 15000 : 60000
+        maxPoolSize: 10
       });
       globalForMongo.__mongoClientPromise = client.connect();
     }
@@ -457,8 +458,67 @@ function computeServerVipPayload(user: any) {
   };
 }
 
+const LARGE_DATA_URI_MARKER = "__LARGE_DATA_URI__";
+
 function isLargeDataUri(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith("data:") && value.length > 2048;
+  return (
+    value === LARGE_DATA_URI_MARKER ||
+    (typeof value === "string" && value.startsWith("data:") && value.length > 2048)
+  );
+}
+
+function mongoStripLargeDataUriExpr(fieldPath: string) {
+  return {
+    $cond: {
+      if: { $eq: [{ $type: fieldPath }, "string"] },
+      then: {
+        $cond: {
+          if: {
+            $and: [
+              { $gt: [{ $strLenBytes: fieldPath }, 2048] },
+              { $eq: [{ $substrBytes: [fieldPath, 0, 5] }, "data:"] }
+            ]
+          },
+          then: LARGE_DATA_URI_MARKER,
+          else: fieldPath
+        }
+      },
+      else: fieldPath
+    }
+  };
+}
+
+function mongoStripLargeDataUriArrayExpr(fieldPath: string) {
+  return {
+    $cond: {
+      if: { $isArray: fieldPath },
+      then: {
+        $map: {
+          input: fieldPath,
+          as: "item",
+          in: {
+            $cond: {
+              if: { $eq: [{ $type: "$$item" }, "string"] },
+              then: {
+                $cond: {
+                  if: {
+                    $and: [
+                      { $gt: [{ $strLenBytes: "$$item" }, 2048] },
+                      { $eq: [{ $substrBytes: ["$$item", 0, 5] }, "data:"] }
+                    ]
+                  },
+                  then: LARGE_DATA_URI_MARKER,
+                  else: "$$item"
+                }
+              },
+              else: "$$item"
+            }
+          }
+        }
+      },
+      else: fieldPath
+    }
+  };
 }
 
 function sendMediaValue(res: any, value: unknown) {
@@ -496,19 +556,82 @@ async function loadAllDataFromDb(db: Db) {
     rawProductVideos,
     rawCustomRequests
   ] = await Promise.all([
-    db.collection("products").find({}, { projection: { _id: 0 } }).toArray(),
-    db.collection("users").find({}, { projection: { _id: 0 } }).toArray(),
-    db.collection("orders").find({}, { projection: { _id: 0 } }).sort({ timestamp: -1 }).toArray(),
-    db.collection("banners").find({}, { projection: { _id: 0 } }).toArray(),
+    db
+      .collection("products")
+      .aggregate([
+        {
+          $addFields: {
+            images: mongoStripLargeDataUriArrayExpr("$images"),
+            videos: mongoStripLargeDataUriArrayExpr("$videos")
+          }
+        },
+        { $project: { _id: 0 } }
+      ])
+      .toArray(),
+    db
+      .collection("users")
+      .aggregate([
+        { $addFields: { avatar: mongoStripLargeDataUriExpr("$avatar") } },
+        { $project: { _id: 0 } }
+      ])
+      .toArray(),
+    db
+      .collection("orders")
+      .aggregate([
+        { $sort: { timestamp: -1 } },
+        { $addFields: { receiptImage: mongoStripLargeDataUriExpr("$receiptImage") } },
+        { $project: { _id: 0 } }
+      ])
+      .toArray(),
+    db
+      .collection("banners")
+      .aggregate([
+        { $addFields: { image: mongoStripLargeDataUriExpr("$image") } },
+        { $project: { _id: 0 } }
+      ])
+      .toArray(),
     db.collection("supportMessages").find({}, { projection: { _id: 0 } }).sort({ date: -1 }).toArray(),
     db.collection("promoCodes").find({}, { projection: { _id: 0 } }).toArray(),
-    db.collection("partnerships").find({}, { projection: { _id: 0 } }).sort({ date: -1 }).toArray(),
+    db
+      .collection("partnerships")
+      .aggregate([
+        { $sort: { date: -1 } },
+        { $addFields: { receiptImage: mongoStripLargeDataUriExpr("$receiptImage") } },
+        { $project: { _id: 0 } }
+      ])
+      .toArray(),
     db.collection("wishlists").find({}, { projection: { _id: 0 } }).toArray(),
     db.collection("carts").find({}, { projection: { _id: 0 } }).toArray(),
     db.collection("vipSettings").findOne({ id: "default" }, { projection: { _id: 0 } }),
-    db.collection("vipRequests").find({}, { projection: { _id: 0 } }).sort({ createdAt: -1 }).toArray(),
-    db.collection("productVideos").find({}, { projection: { _id: 0 } }).sort({ createdAt: -1 }).toArray(),
-    db.collection("customRequests").find({}, { projection: { _id: 0 } }).sort({ createdAt: -1 }).toArray()
+    db
+      .collection("vipRequests")
+      .aggregate([
+        { $sort: { createdAt: -1 } },
+        { $addFields: { receiptImage: mongoStripLargeDataUriExpr("$receiptImage") } },
+        { $project: { _id: 0 } }
+      ])
+      .toArray(),
+    db
+      .collection("productVideos")
+      .aggregate([
+        { $sort: { createdAt: -1 } },
+        {
+          $addFields: {
+            posterImage: mongoStripLargeDataUriExpr("$posterImage"),
+            videoUrl: mongoStripLargeDataUriExpr("$videoUrl")
+          }
+        },
+        { $project: { _id: 0 } }
+      ])
+      .toArray(),
+    db
+      .collection("customRequests")
+      .aggregate([
+        { $sort: { createdAt: -1 } },
+        { $addFields: { imageUrl: mongoStripLargeDataUriExpr("$imageUrl") } },
+        { $project: { _id: 0 } }
+      ])
+      .toArray()
   ]);
 
   const products = rawProducts.map((p: any) => ({
@@ -795,33 +918,12 @@ router.get("/", (req, res) =>
 );
 
 router.get("/health", async (req, res) => {
-  res.setHeader("Cache-Control", "no-store");
-  const runtime = process.env.VERCEL ? "vercel-serverless" : "node-server";
-  const region = process.env.VERCEL_REGION || "local";
-  const telegramConfigured = Boolean((process.env.TELEGRAM_TOKEN || "").trim());
   try {
     const db = await requireDb();
     await db.command({ ping: 1 });
-    res.json({
-      status: "ok",
-      mongoConnected: true,
-      dbName: DB_NAME,
-      runtime,
-      region,
-      telegramConfigured,
-      time: Date.now()
-    });
+    res.json({ status: "ok", mongoConnected: true, dbName: DB_NAME, time: Date.now() });
   } catch (e: any) {
-    res.status(503).json({
-      status: "error",
-      mongoConnected: false,
-      dbName: DB_NAME,
-      runtime,
-      region,
-      telegramConfigured,
-      error: e.message,
-      hint: "Vercel Environment Variables ichida MONGODB_URI va MongoDB Atlas Network Access (0.0.0.0/0) sozlamasini tekshiring."
-    });
+    res.status(503).json({ status: "error", mongoConnected: false, dbName: DB_NAME, error: e.message });
   }
 });
 
@@ -837,7 +939,7 @@ router.get("/data", async (req, res) => {
     if (!inflightDataLoad) {
       inflightDataLoad = loadAllDataFromDb(db)
         .then((data) => {
-          cachedDataPayload = { data, expiresAt: Date.now() + 20000 };
+          cachedDataPayload = { data, expiresAt: Date.now() + 60000 };
           return data;
         })
         .finally(() => {
@@ -1361,6 +1463,20 @@ router.post("/orders", async (req, res) => {
       vipRewardApplied: false
     };
 
+    const affAttribution = await applyAffiliateOnOrderCreate(db, {
+      orderId,
+      buyerUserId: String(rawOrder.userId || ""),
+      buyerName: String(rawOrder.username || "Mijoz"),
+      productName: String(rawOrder.productName || "Mahsulot"),
+      orderAmount: Number(rawOrder.price) || 0,
+      referredByCode: rawOrder.referredBy
+    });
+    if (affAttribution.referredBy) {
+      newOrder.referredBy = affAttribution.referredBy;
+      newOrder.referredAffiliateId = affAttribution.referredAffiliateId;
+      newOrder.affiliateCommissionAmount = affAttribution.affiliateCommissionAmount;
+    }
+
     await ordersCol.insertOne({ ...newOrder });
     const responseOrder = {
       ...newOrder,
@@ -1458,6 +1574,12 @@ router.post("/orders/update", async (req, res) => {
       { $set: updateFields },
       { returnDocument: "after", projection: { _id: 0 } }
     );
+
+    if (status === "delivered") {
+      await applyAffiliateOnOrderDelivered(db, id);
+    } else if (status === "cancelled") {
+      await applyAffiliateOnOrderCancelled(db, id);
+    }
 
     res.json({ success: true, order: result, updatedUser });
   } catch (e: any) {
@@ -1686,6 +1808,7 @@ router.delete("/orders/:id", async (req, res) => {
     if (!adminDevice) {
       return res.status(403).json({ error: "Faqat ruxsat berilgan admin qurilmasi buyurtmani o'chira oladi" });
     }
+    await applyAffiliateOnOrderCancelled(db, id);
     await db.collection("orders").deleteOne({ id });
     res.json({ success: true });
   } catch (e: any) {
@@ -2712,26 +2835,187 @@ router.post("/admin-access/password", async (req, res) => {
   }
 });
 
-// Route API requests under /api, /api/index.ts, /api/index, or direct Vercel serverless execution
+// ================= GEMINI AI SYSTEM ROUTES =================
+
+async function loadAiCatalog(db: Db): Promise<AiCatalogItem[]> {
+  const docs = await db
+    .collection("products")
+    .find(
+      {},
+      {
+        projection: {
+          _id: 0,
+          id: 1,
+          name: 1,
+          category: 1,
+          description: 1,
+          pinduoduoPrice: 1,
+          oldPrice: 1,
+          vipPrice: 1,
+          isVipOnly: 1,
+          sizes: 1,
+          weight: 1,
+          rating: 1,
+          salesCount: 1,
+          isOriginal: 1,
+          isCheapPrice: 1
+        }
+      }
+    )
+    .toArray();
+  return docs as unknown as AiCatalogItem[];
+}
+
+router.post("/ai/chat", async (req, res) => {
+  try {
+    const { messages, userName, vipTier, imageDataUrl } = req.body || {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "Suhbat xabari bo'sh bo'lmasligi kerak" });
+    }
+    const db = await requireDb();
+    const catalog = await loadAiCatalog(db);
+    const result = await runAiShoppingChat({
+      messages,
+      catalog,
+      userName: typeof userName === "string" ? userName : undefined,
+      vipTier: typeof vipTier === "string" ? vipTier : undefined,
+      imageDataUrl: typeof imageDataUrl === "string" ? imageDataUrl : undefined
+    });
+    res.json({ success: true, ...result });
+  } catch (e: any) {
+    const status = Number(e?.status) >= 400 && Number(e?.status) < 600 ? Number(e.status) : 500;
+    res.status(status).json({ error: e?.message || "AI Maslahatchi xatosi" });
+  }
+});
+
+router.post("/ai/visual-search", async (req, res) => {
+  try {
+    const { imageDataUrl, hintText } = req.body || {};
+    if (!imageDataUrl || typeof imageDataUrl !== "string") {
+      return res.status(400).json({ error: "Iltimos, avval rasm yuklang" });
+    }
+    const db = await requireDb();
+    const catalog = await loadAiCatalog(db);
+    const result = await runAiVisualSearch({
+      imageDataUrl,
+      hintText: typeof hintText === "string" ? hintText : undefined,
+      catalog
+    });
+    res.json({ success: true, ...result });
+  } catch (e: any) {
+    const status = Number(e?.status) >= 400 && Number(e?.status) < 600 ? Number(e.status) : 500;
+    res.status(status).json({ error: e?.message || "Rasmni tahlil qilishda xatolik" });
+  }
+});
+
+router.post("/ai/product-help", async (req, res) => {
+  try {
+    const { productId, product, question, measurements, vipTier } = req.body || {};
+    if (!question || typeof question !== "string" || !question.trim()) {
+      return res.status(400).json({ error: "Iltimos, savolingizni yozing" });
+    }
+    const db = await requireDb();
+    let targetProduct: AiCatalogItem | null = null;
+    if (productId && typeof productId === "string") {
+      const found = await db
+        .collection("products")
+        .findOne({ id: productId }, { projection: { _id: 0, images: 0, videos: 0 } });
+      if (found) targetProduct = found as unknown as AiCatalogItem;
+    }
+    if (!targetProduct && product && typeof product === "object") {
+      targetProduct = product as AiCatalogItem;
+    }
+    if (!targetProduct) {
+      return res.status(404).json({ error: "Mahsulot topilmadi" });
+    }
+
+    const result = await runAiProductHelp({
+      product: targetProduct,
+      question: question.trim(),
+      measurements: typeof measurements === "string" ? measurements : undefined,
+      vipTier: typeof vipTier === "string" ? vipTier : undefined
+    });
+    res.json({ success: true, ...result });
+  } catch (e: any) {
+    const status = Number(e?.status) >= 400 && Number(e?.status) < 600 ? Number(e.status) : 500;
+    res.status(status).json({ error: e?.message || "AI yordamchi javob bera olmadi" });
+  }
+});
+
+router.post("/ai/admin-copy", async (req, res) => {
+  try {
+    const db = await requireDb();
+    const device = await verifyRequestAdminDevice(req, db);
+    if (!device) {
+      return res.status(403).json({ error: "Admin ruxsati tasdiqlanmagan qurilma" });
+    }
+    const { name, category, sizes, priceYuan, imageDataUrl } = req.body || {};
+    if (!String(name || "").trim() && !String(imageDataUrl || "").trim()) {
+      return res.status(400).json({ error: "Kamida mahsulot nomi yoki rasm kiriting" });
+    }
+    const result = await runAiAdminCopy({
+      name: typeof name === "string" ? name : undefined,
+      category: typeof category === "string" ? category : undefined,
+      sizes: typeof sizes === "string" ? sizes : undefined,
+      priceYuan: typeof priceYuan === "string" ? priceYuan : undefined,
+      imageDataUrl: typeof imageDataUrl === "string" ? imageDataUrl : undefined
+    });
+    res.json({ success: true, ...result });
+  } catch (e: any) {
+    const status = Number(e?.status) >= 400 && Number(e?.status) < 600 ? Number(e.status) : 500;
+    res.status(status).json({ error: e?.message || "AI tavsif yaratishda xatolik" });
+  }
+});
+
+// ================= WEEKLY LIVE AUCTION & SELLER ESCROW ROUTES =================
+const sendAdminTelegramAlert = async (message: string) => {
+  const token = (process.env.TELEGRAM_TOKEN || "").trim();
+  const targetChatId = (process.env.ADMIN_CHAT_ID || "8215056224").trim();
+  if (!token || !message) return;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: targetChatId,
+        text: message,
+        parse_mode: "Markdown"
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+  } catch (err: any) {
+    console.warn("Admin Telegram alert skipped:", err?.message);
+  }
+};
+
+registerAuctionRoutes(router, {
+  requireDb,
+  verifyRequestAdminDevice,
+  sendAdminTelegramAlert
+});
+
+registerTayyorAffiliateRoutes(router, {
+  requireDb,
+  verifyRequestAdminDevice,
+  sendAdminTelegramAlert,
+  sendMediaValue
+});
+
+// Route API requests under /api, /api/index.ts, or direct serverless execution
 app.use((req, res, next) => {
-  const isApiRequest =
-    req.url.startsWith("/api") ||
-    req.originalUrl?.startsWith("/api") ||
-    Boolean(process.env.VERCEL);
+  const isApiRequest = req.url.startsWith("/api") || req.originalUrl?.startsWith("/api") || Boolean(process.env.VERCEL);
   if (!isApiRequest) {
     return next();
   }
 
-  let url = req.url || "/";
+  let url = req.url;
   if (url.startsWith("/api/index.ts")) {
-    url = url.slice("/api/index.ts".length);
-  } else if (url.startsWith("/api/index")) {
-    url = url.slice("/api/index".length);
+    url = url.replace("/api/index.ts", "") || "/";
   } else if (url.startsWith("/api")) {
-    url = url.slice("/api".length);
-  }
-  if (!url || url.startsWith("?")) {
-    url = "/" + url;
+    url = url.slice(4) || "/";
   }
   req.url = url;
 
@@ -2740,10 +3024,7 @@ app.use((req, res, next) => {
 
 // Catch-all 404 for unmatched API requests - Always returns clean JSON
 app.use((req, res, next) => {
-  const isApiRequest =
-    req.url.startsWith("/api") ||
-    req.originalUrl?.startsWith("/api") ||
-    Boolean(process.env.VERCEL);
+  const isApiRequest = req.url.startsWith("/api") || req.originalUrl?.startsWith("/api") || Boolean(process.env.VERCEL);
   if (!isApiRequest) {
     return next();
   }
@@ -2759,21 +3040,12 @@ app.use((req, res, next) => {
 app.use((err: any, req: any, res: any, next: any) => {
   console.error("Critical API Error:", err);
   if (!res.headersSent) {
-    if (err?.type === "entity.too.large" || err?.status === 413) {
-      return res.status(413).json({
-        error: "Yuklangan fayl hajmi juda katta (limitdan oshdi). Iltimos, kichikroq rasm yoki video tanlang."
-      });
-    }
-    res.status(err?.status || 500).json({
+    res.status(500).json({
       error: "Internal Server Error",
       message: err?.message || "Unknown error",
       path: req.originalUrl || req.url
     });
   }
 });
-
-export const config = {
-  maxDuration: 30
-};
 
 export default app;

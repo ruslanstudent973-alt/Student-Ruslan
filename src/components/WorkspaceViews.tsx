@@ -4,7 +4,7 @@ import {
   MessageCircle, PlusCircle, Grid, ClipboardList, Image as ImageIcon, Handshake,
   BarChart3, Copy, Check, Search, Trash2, Plus, UploadCloud, X, Send, Loader2,
   MapPin, Video, Play, Zap, Lock, UserPlus, Calendar, Sun, Moon, Star, ShieldCheck,
-  Clock, CheckCircle2, Volume2, VolumeX, Crown
+  Clock, CheckCircle2, Volume2, VolumeX, Crown, Gavel, Wallet, TrendingUp, XCircle
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell
@@ -16,6 +16,7 @@ import { MAIN_REF_LINK } from './StorefrontViews';
 import { VipStatusCard, VipTierBadge } from './VipComponents';
 import { getEffectiveVipStatus } from '../utils/vip';
 import { AdminOnlyGate, useAdminAccess } from './AdminOnlyGuard';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   extractLocalUzDigits,
   formatLocalUzDigits,
@@ -24,11 +25,8 @@ import {
   getUzOperatorName,
   writeRecentClient
 } from '../utils/authHelpers';
-import {
-  compressImageFile,
-  readVideoFileForVercel,
-  assertVercelPayloadSafe
-} from '../utils/mediaCompress';
+import { StaggerGrid, StaggerItem, GlassReveal } from './GlassMotionPrimitives';
+import { uploadMediaSmart } from '../utils/r2MediaUpload';
 
 const PageHeader: React.FC<{
   title: string;
@@ -36,16 +34,18 @@ const PageHeader: React.FC<{
   onBack?: () => void;
   action?: React.ReactNode;
 }> = ({ title, subtitle, onBack, action }) => (
-  <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+  <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200/70 dark:border-slate-800/70">
     <div className="flex items-center gap-3.5">
       {onBack && (
-        <button
+        <motion.button
           type="button"
+          whileHover={{ x: -2 }}
+          whileTap={{ scale: 0.94 }}
           onClick={onBack}
-          className="p-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          className="p-2.5 yuyu-glass-subtle rounded-xl hover:bg-white/85 dark:hover:bg-slate-800/80 transition-colors"
         >
           <ChevronLeft size={18} />
-        </button>
+        </motion.button>
       )}
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
@@ -75,6 +75,9 @@ export const ProfileView: React.FC<{
   onOpenVipModal: () => void;
   pendingCustomRequestsCount?: number;
   pricedCustomRequestsCount?: number;
+  pendingSellerPayoutActionsCount?: number;
+  pendingResaleCount?: number;
+  pendingAffiliatePayoutsCount?: number;
 }> = ({
   t,
   user,
@@ -91,7 +94,10 @@ export const ProfileView: React.FC<{
   safeFetchJSON,
   onOpenVipModal,
   pendingCustomRequestsCount = 0,
-  pricedCustomRequestsCount = 0
+  pricedCustomRequestsCount = 0,
+  pendingSellerPayoutActionsCount = 0,
+  pendingResaleCount = 0,
+  pendingAffiliatePayoutsCount = 0
 }) => {
   const [editing, setEditing] = useState(false);
   const [tempBio, setTempBio] = useState(user.bio || '');
@@ -171,11 +177,20 @@ export const ProfileView: React.FC<{
     playSound();
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      notify("Iltimos, faqat rasm faylini tanlang", 'error');
+      return;
+    }
+    notify("Avatar yuklanmoqda...", 'info');
     try {
-      const compressed = await compressImageFile(file, 'avatar');
-      persistUserToDb({ ...user, avatar: compressed });
+      const uploadedUrl = await uploadMediaSmart(file, {
+        folder: 'avatars',
+        maxDim: 512,
+        quality: 0.84
+      });
+      await persistUserToDb({ ...user, avatar: uploadedUrl });
     } catch (err: any) {
-      notify(err?.message || "Avatar rasmini yuklashda xatolik", 'error');
+      notify(err?.message || "Avatarni yuklashda xatolik", 'error');
     }
   };
 
@@ -227,6 +242,24 @@ export const ProfileView: React.FC<{
   }[] = [
     { view: 'orders', label: t.orders, desc: 'Buyurtmalar va trek raqamlar', icon: <Package size={18} /> },
     {
+      view: 'affiliate_cabinet',
+      label: 'Hamkorlik (Pul ishlash)',
+      desc: '5%–10% real daromad va havolalar',
+      icon: <TrendingUp size={18} />
+    },
+    {
+      view: 'tayyor_bozor',
+      label: '⚡ Tayyor Bozor',
+      desc: "O'zbekistonda tayyor • 1 kunda yetkazish",
+      icon: <Zap size={18} />
+    },
+    {
+      view: 'my_auctions',
+      label: 'Auksionlarim',
+      desc: 'Faol stavkalar va yutuqlar',
+      icon: <Gavel size={18} />
+    },
+    {
       view: 'my_requests',
       label: "Mening so'rovlarim",
       desc: "Rasm bo'yicha topilgan narxlar",
@@ -247,6 +280,28 @@ export const ProfileView: React.FC<{
     highlight?: boolean;
     badge?: number;
   }[] = [
+    {
+      view: 'admin_tayyor_bozor',
+      label: 'Tayyor Bozor',
+      icon: <Zap size={18} />,
+      highlight: true,
+      badge: pendingResaleCount
+    },
+    {
+      view: 'admin_affiliates',
+      label: 'Hamkorlar (Affiliate)',
+      icon: <TrendingUp size={18} />,
+      highlight: true,
+      badge: pendingAffiliatePayoutsCount
+    },
+    { view: 'admin_auctions', label: 'Auksion boshqaruvi', icon: <Gavel size={18} />, highlight: true },
+    {
+      view: 'admin_seller_payouts',
+      label: "Sotuvchi to'lovlari",
+      icon: <Wallet size={18} />,
+      highlight: true,
+      badge: pendingSellerPayoutActionsCount
+    },
     { view: 'admin_vip', label: 'VIP Boshqaruv', icon: <Crown size={18} />, highlight: true },
     {
       view: 'admin_custom_requests',
@@ -273,40 +328,46 @@ export const ProfileView: React.FC<{
         subtitle="Hisob sozlamalari, buyurtmalar va boshqaruv bo'limlari"
         action={
           <div className="flex flex-wrap items-center gap-2.5">
-            <button
+            <motion.button
               type="button"
+              whileHover={{ y: -1, scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
               onClick={onToggleSound}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-800/80 transition-colors"
             >
               {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} className="text-slate-400" />}
               <span>{soundEnabled ? 'Ovoz yoqilgan' : "Ovoz o'chirilgan"}</span>
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               type="button"
+              whileHover={{ y: -1, scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
               onClick={onToggleTheme}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-800/80 transition-colors"
             >
               {theme === 'light' ? <Moon size={15} /> : <Sun size={15} className="text-amber-400" />}
               <span>{theme === 'light' ? 'Tungi rejim' : 'Kunduzgi rejim'}</span>
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               type="button"
+              whileHover={{ y: -1, scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
               onClick={() => {
                 playSound();
                 onLogout();
               }}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/70 dark:bg-red-950/30 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 transition-colors"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-red-200/80 dark:border-red-900/50 bg-red-50/75 dark:bg-red-950/35 backdrop-blur-md text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-100/85 dark:hover:bg-red-950/55 transition-colors"
             >
               <LogOut size={15} />
               <span>Chiqish</span>
-            </button>
+            </motion.button>
           </div>
         }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left 4 Columns: User Identity Card */}
-        <aside className="lg:col-span-4 bg-white dark:bg-[#111827] p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+        <aside className="lg:col-span-4 yuyu-glass p-7 rounded-3xl space-y-6">
           <div className="flex flex-col items-center text-center space-y-4">
             <div
               className={`relative w-28 h-28 rounded-full border-2 p-1 bg-slate-50 dark:bg-slate-900 ${
@@ -479,14 +540,14 @@ export const ProfileView: React.FC<{
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-5 border-t border-slate-100 dark:border-slate-800">
-            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl text-center space-y-1">
+          <div className="grid grid-cols-2 gap-3 pt-5 border-t border-slate-200/60 dark:border-slate-800/70">
+            <div className="yuyu-glass-subtle p-4 rounded-2xl text-center space-y-1">
               <p className="text-xs text-slate-500">Bonuslar</p>
               <p className="font-mono tabular-nums text-base font-bold text-[#0F294A] dark:text-blue-400">
                 {(user.referralBalance || 0).toLocaleString()} UZS
               </p>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl text-center space-y-1">
+            <div className="yuyu-glass-subtle p-4 rounded-2xl text-center space-y-1">
               <p className="text-xs text-slate-500">Do'stlar</p>
               <p className="font-mono tabular-nums text-base font-bold text-slate-900 dark:text-white">
                 {user.invitedCount || 0}
@@ -502,7 +563,7 @@ export const ProfileView: React.FC<{
 
           {/* Admin Control Grid — Strictly hidden on devices without verified admin token */}
           <AdminOnlyGate permission="admin_only">
-            <section className="bg-white dark:bg-[#111827] p-6 sm:p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+            <section className="yuyu-glass p-6 sm:p-7 rounded-3xl space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
@@ -517,71 +578,79 @@ export const ProfileView: React.FC<{
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <StaggerGrid className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {adminLinks.map((item) => (
-                  <button
-                    key={item.view}
-                    type="button"
-                    onClick={() => {
-                      playSound();
-                      onNavigate(item.view);
-                    }}
-                    className={`relative p-4 rounded-xl flex flex-col items-start gap-3 text-left transition-colors ${
-                      item.highlight
-                        ? 'bg-[#070B14] border border-amber-400/60 hover:border-amber-300 text-amber-200 shadow-[0_0_20px_rgba(251,191,36,0.18)]'
-                        : 'bg-[#0F294A] hover:bg-[#163A66] dark:bg-slate-800 dark:hover:bg-slate-700 text-white'
-                    }`}
-                  >
-                    {item.badge !== undefined && item.badge > 0 && (
-                      <span className="absolute top-3 right-3 px-2 py-0.5 rounded-lg bg-cyan-400 text-slate-950 font-mono tabular-nums text-[10px] font-extrabold shadow-[0_0_12px_rgba(34,211,238,0.55)]">
-                        {item.badge}
-                      </span>
-                    )}
-                    <span className={item.highlight ? 'text-amber-400' : 'text-blue-200'}>{item.icon}</span>
-                    <span className="text-xs font-semibold leading-snug">{item.label}</span>
-                  </button>
+                  <StaggerItem key={item.view}>
+                    <motion.button
+                      type="button"
+                      whileHover={{ y: -3, scale: 1.02 }}
+                      whileTap={{ scale: 0.96 }}
+                      transition={{ type: 'spring', stiffness: 360, damping: 24 }}
+                      onClick={() => {
+                        playSound();
+                        onNavigate(item.view);
+                      }}
+                      className={`relative w-full h-full p-4 rounded-2xl flex flex-col items-start gap-3 text-left transition-colors ${
+                        item.highlight
+                          ? 'bg-[#070B14]/92 backdrop-blur-xl border border-amber-400/60 hover:border-amber-300 text-amber-200 shadow-[0_10px_28px_rgba(251,191,36,0.18)]'
+                          : 'bg-[#0F294A]/92 hover:bg-[#163A66] dark:bg-slate-800/85 dark:hover:bg-slate-700/90 backdrop-blur-md border border-white/15 text-white shadow-md shadow-blue-950/10'
+                      }`}
+                    >
+                      {item.badge !== undefined && item.badge > 0 && (
+                        <span className="absolute top-3 right-3 px-2 py-0.5 rounded-lg bg-cyan-400 text-slate-950 font-mono tabular-nums text-[10px] font-extrabold shadow-[0_0_12px_rgba(34,211,238,0.55)]">
+                          {item.badge}
+                        </span>
+                      )}
+                      <span className={item.highlight ? 'text-amber-400' : 'text-blue-200'}>{item.icon}</span>
+                      <span className="text-xs font-semibold leading-snug">{item.label}</span>
+                    </motion.button>
+                  </StaggerItem>
                 ))}
-              </div>
+              </StaggerGrid>
             </section>
           </AdminOnlyGate>
 
           {/* Customer Shortcuts Grid */}
-          <section className="bg-white dark:bg-[#111827] p-6 sm:p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+          <section className="yuyu-glass p-6 sm:p-7 rounded-3xl space-y-5">
             <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
               Xaridor bo'limlari
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <StaggerGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {customerLinks.map((item) => (
-                <button
-                  key={item.view}
-                  type="button"
-                  onClick={() => {
-                    playSound();
-                    onNavigate(item.view);
-                  }}
-                  className="relative p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-[#0F294A] dark:hover:border-blue-500 hover:bg-slate-50 dark:hover:bg-slate-900 text-left space-y-2 transition-colors"
-                >
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span className="absolute top-3.5 right-3.5 px-2 py-0.5 rounded-lg bg-emerald-500 text-white font-mono tabular-nums text-[10px] font-bold">
-                      {item.badge} narx
-                    </span>
-                  )}
-                  <div className="w-9 h-9 rounded-lg bg-[#EEF4FA] dark:bg-slate-800 text-[#0F294A] dark:text-blue-400 flex items-center justify-center">
-                    {item.icon}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      {item.label}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{item.desc}</p>
-                  </div>
-                </button>
+                <StaggerItem key={item.view}>
+                  <motion.button
+                    type="button"
+                    whileHover={{ y: -3, scale: 1.018 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: 'spring', stiffness: 360, damping: 24 }}
+                    onClick={() => {
+                      playSound();
+                      onNavigate(item.view);
+                    }}
+                    className="relative w-full h-full p-4 rounded-2xl yuyu-glass-subtle hover:border-blue-400/60 dark:hover:border-blue-500/60 hover:bg-white/85 dark:hover:bg-slate-800/80 text-left space-y-2 transition-colors"
+                  >
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="absolute top-3.5 right-3.5 px-2 py-0.5 rounded-lg bg-emerald-500 text-white font-mono tabular-nums text-[10px] font-bold">
+                        {item.badge} narx
+                      </span>
+                    )}
+                    <div className="w-9 h-9 rounded-xl bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200/60 dark:border-blue-800/60 text-[#0F294A] dark:text-blue-400 flex items-center justify-center">
+                      {item.icon}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        {item.label}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{item.desc}</p>
+                    </div>
+                  </motion.button>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGrid>
           </section>
 
           {/* Compact Referral Banner */}
-          <section className="bg-[#0F294A] text-white p-6 sm:p-7 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <section className="bg-gradient-to-br from-[#0F294A] via-[#133560] to-[#0B1F3B] border border-white/15 shadow-[0_18px_40px_rgba(15,41,74,0.2)] text-white p-6 sm:p-7 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-5">
             <div className="space-y-1">
               <h3 className="font-display text-lg font-bold">Do'stlaringizni taklif qiling</h3>
               <p className="text-xs text-slate-300">
@@ -594,14 +663,16 @@ export const ProfileView: React.FC<{
                 value={referralLink}
                 className="flex-1 bg-white/10 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white truncate outline-none"
               />
-              <button
+              <motion.button
                 type="button"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.96 }}
                 onClick={copyReferral}
                 className="px-4 py-2.5 bg-white text-[#0F294A] rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 hover:bg-slate-100 transition-colors"
               >
                 {copiedRef ? <Check size={14} /> : <Copy size={14} />}
                 <span>{copiedRef ? 'Nusxalandi' : 'Nusxalash'}</span>
-              </button>
+              </motion.button>
             </div>
           </section>
         </div>
@@ -822,7 +893,7 @@ export const StatsView: React.FC<{
       />
 
       {/* Horizontal Desktop Date Range Filter Toolbar */}
-      <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-end justify-between gap-5">
+      <div className="yuyu-glass p-5 rounded-3xl flex flex-col lg:flex-row lg:items-end justify-between gap-5">
         <div className="space-y-2.5">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
             <Calendar size={15} className="text-[#0F294A] dark:text-blue-400" />
@@ -833,7 +904,7 @@ export const StatsView: React.FC<{
               </span>
             )}
           </div>
-          <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl gap-1">
+          <div className="inline-flex p-1 yuyu-glass-subtle rounded-xl gap-1">
             {[
               { id: 'all', label: 'Hammasi' },
               { id: 'today', label: 'Bugun' },
@@ -846,8 +917,8 @@ export const StatsView: React.FC<{
                 onClick={() => applyPreset(preset.id as any)}
                 className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
                   activePreset === preset.id
-                    ? 'bg-[#0F294A] dark:bg-blue-600 text-white'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-[#0F294A] dark:bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 {preset.label}
@@ -864,7 +935,7 @@ export const StatsView: React.FC<{
               value={startDate}
               max={endDate || undefined}
               onChange={(e) => handleStartDateChange(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono font-medium outline-none focus:border-[#0F294A]"
+              className="w-full yuyu-glass-input rounded-xl px-3.5 py-2 text-xs font-mono font-medium outline-none focus:border-[#0F294A]"
             />
           </div>
           <div className="space-y-1">
@@ -874,41 +945,59 @@ export const StatsView: React.FC<{
               value={endDate}
               min={startDate || undefined}
               onChange={(e) => handleEndDateChange(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono font-medium outline-none focus:border-[#0F294A]"
+              className="w-full yuyu-glass-input rounded-xl px-3.5 py-2 text-xs font-mono font-medium outline-none focus:border-[#0F294A]"
             />
           </div>
         </div>
       </div>
 
       {/* 3-Column KPI Strip */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-[#0F294A] text-white p-6 rounded-2xl space-y-2">
-          <p className="text-xs font-medium text-blue-200">
-            {isDateFiltered ? 'Davr tushumi (yetkazilgan)' : 'Umumiy tushum'}
-          </p>
-          <p className="font-mono tabular-nums text-3xl font-bold">
-            {totalSales.toLocaleString()} UZS
-          </p>
-        </div>
-        <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
-          <p className="text-xs font-medium text-slate-500">Buyurtmalar soni</p>
-          <p className="font-mono tabular-nums text-3xl font-bold text-slate-900 dark:text-white">
-            {totalOrders.toLocaleString()}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
-          <p className="text-xs font-medium text-slate-500">
-            {isDateFiltered ? 'Faol mijozlar' : 'Jami mijozlar'}
-          </p>
-          <p className="font-mono tabular-nums text-3xl font-bold text-slate-900 dark:text-white">
-            {totalUsers.toLocaleString()}
-          </p>
-        </div>
-      </div>
+      <StaggerGrid className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <StaggerItem>
+          <motion.div
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+            className="bg-gradient-to-br from-[#0F294A] via-[#133560] to-[#0B1F3B] border border-white/15 shadow-[0_18px_40px_rgba(15,41,74,0.2)] text-white p-6 rounded-3xl space-y-2"
+          >
+            <p className="text-xs font-medium text-blue-200">
+              {isDateFiltered ? 'Davr tushumi (yetkazilgan)' : 'Umumiy tushum'}
+            </p>
+            <p className="font-mono tabular-nums text-3xl font-bold">
+              {totalSales.toLocaleString()} UZS
+            </p>
+          </motion.div>
+        </StaggerItem>
+        <StaggerItem>
+          <motion.div
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+            className="yuyu-glass p-6 rounded-3xl space-y-2"
+          >
+            <p className="text-xs font-medium text-slate-500">Buyurtmalar soni</p>
+            <p className="font-mono tabular-nums text-3xl font-bold text-slate-900 dark:text-white">
+              {totalOrders.toLocaleString()}
+            </p>
+          </motion.div>
+        </StaggerItem>
+        <StaggerItem>
+          <motion.div
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+            className="yuyu-glass p-6 rounded-3xl space-y-2"
+          >
+            <p className="text-xs font-medium text-slate-500">
+              {isDateFiltered ? 'Faol mijozlar' : 'Jami mijozlar'}
+            </p>
+            <p className="font-mono tabular-nums text-3xl font-bold text-slate-900 dark:text-white">
+              {totalUsers.toLocaleString()}
+            </p>
+          </motion.div>
+        </StaggerItem>
+      </StaggerGrid>
 
       {/* 12-Col Analytics Split: Wide BarChart + Top Sellers */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-8 bg-white dark:bg-[#111827] p-6 sm:p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+        <div className="lg:col-span-8 yuyu-glass p-6 sm:p-7 rounded-3xl space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
@@ -990,19 +1079,19 @@ export const StatsView: React.FC<{
         </div>
 
         {/* Right 4 Columns: Top Sellers */}
-        <div className="lg:col-span-4 bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+        <div className="lg:col-span-4 yuyu-glass p-6 rounded-3xl space-y-5">
           <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
             Eng ko'p sotilganlar
           </h2>
 
           {sortedProducts.length > 0 ? (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="divide-y divide-slate-200/60 dark:divide-slate-800/70">
               {sortedProducts.slice(0, 6).map((p: any, idx: number) => (
                 <div key={p.id} className="py-3.5 first:pt-0 last:pb-0 flex items-center gap-3.5">
                   <span className="font-mono tabular-nums text-xs font-bold text-slate-400 w-5 shrink-0">
                     0{idx + 1}
                   </span>
-                  <div className="w-11 h-11 rounded-lg bg-[#F1F5F9] dark:bg-slate-800 p-1 shrink-0 overflow-hidden">
+                  <div className="w-11 h-11 rounded-xl bg-white/75 dark:bg-slate-800/75 p-1 shrink-0 overflow-hidden">
                     <SafeImage src={p.images?.[0]} alt={p.name} className="w-full h-full object-contain" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1035,9 +1124,14 @@ const AdminOrderCard: React.FC<{
 }> = ({ order, t, onUpdateStatus, onDelete }) => {
   const [trackNum, setTrackNum] = useState(order.trackNumber || '');
   const isDone = order.status === 'delivered' || order.status === 'paid';
+  const isCancelled = order.status === 'cancelled';
 
   return (
-    <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+    <motion.div
+      whileHover={{ y: -2 }}
+      transition={{ type: 'spring', stiffness: 340, damping: 26 }}
+      className="yuyu-glass p-6 rounded-3xl space-y-4"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-0.5 min-w-0">
           <p className="font-mono text-xs font-semibold text-[#0F294A] dark:text-blue-400">
@@ -1046,16 +1140,29 @@ const AdminOrderCard: React.FC<{
           <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
             {order.productName} ({order.size})
           </h3>
-          <p className="text-xs text-slate-500">Mijoz: {order.username}</p>
+          <p className="text-xs text-slate-500">
+            Mijoz: {order.username}
+            {order.referredBy ? ` · Hamkor: ${order.referredBy}` : ''}
+          </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <span
             className={`inline-flex items-center gap-1 text-xs font-semibold ${
-              isDone ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'
+              isCancelled
+                ? 'text-red-600 dark:text-red-400'
+                : isDone
+                ? 'text-emerald-700 dark:text-emerald-400'
+                : 'text-amber-700 dark:text-amber-400'
             }`}
           >
-            {isDone ? <CheckCircle2 size={14} /> : <Clock size={14} />}
+            {isCancelled ? (
+              <XCircle size={14} />
+            ) : isDone ? (
+              <CheckCircle2 size={14} />
+            ) : (
+              <Clock size={14} />
+            )}
             <span>{t[order.status] || order.status}</span>
           </span>
           <button
@@ -1069,7 +1176,7 @@ const AdminOrderCard: React.FC<{
         </div>
       </div>
 
-      <div className="p-3.5 bg-slate-50 dark:bg-slate-900 rounded-xl flex items-center justify-between gap-3 text-xs">
+      <div className="p-3.5 yuyu-glass-subtle rounded-2xl flex items-center justify-between gap-3 text-xs">
         <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 truncate">
           <MapPin size={13} className="shrink-0" />
           <span className="truncate">{order.address}</span>
@@ -1081,7 +1188,7 @@ const AdminOrderCard: React.FC<{
 
       <div className="flex flex-col sm:flex-row gap-2.5">
         <input
-          className="flex-1 px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono outline-none focus:border-[#0F294A]"
+          className="flex-1 px-3.5 py-2.5 yuyu-glass-input rounded-xl text-xs font-mono outline-none focus:border-[#0F294A]"
           placeholder="Trek raqamini kiriting..."
           value={trackNum}
           onChange={(e) => setTrackNum(e.target.value)}
@@ -1091,14 +1198,14 @@ const AdminOrderCard: React.FC<{
             href={order.receiptImage}
             target="_blank"
             rel="noreferrer"
-            className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-center whitespace-nowrap"
+            className="px-4 py-2.5 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-800 text-center whitespace-nowrap"
           >
             Chekni ko'rish
           </a>
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 pt-1">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
         <button
           type="button"
           onClick={() => onUpdateStatus(order.id, 'paid', trackNum)}
@@ -1120,8 +1227,15 @@ const AdminOrderCard: React.FC<{
         >
           Yetib keldi
         </button>
+        <button
+          type="button"
+          onClick={() => onUpdateStatus(order.id, 'cancelled', trackNum)}
+          className="py-2.5 border border-red-300 dark:border-red-900/60 bg-red-50/80 dark:bg-red-950/30 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 rounded-xl text-xs font-semibold transition-colors"
+        >
+          Bekor qilish
+        </button>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -1143,21 +1257,22 @@ export const AdminOrdersView: React.FC<{
       }}
     />
     {orders.length === 0 ? (
-      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 py-16 text-center text-sm text-slate-400">
+      <div className="yuyu-glass rounded-3xl py-16 text-center text-sm text-slate-400">
         Hali buyurtmalar kelib tushmagan.
       </div>
     ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <StaggerGrid className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {orders.map((order) => (
-          <AdminOrderCard
-            key={order.id}
-            order={order}
-            t={t}
-            onUpdateStatus={onUpdateStatus}
-            onDelete={onDelete}
-          />
+          <StaggerItem key={order.id}>
+            <AdminOrderCard
+              order={order}
+              t={t}
+              onUpdateStatus={onUpdateStatus}
+              onDelete={onDelete}
+            />
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerGrid>
     )}
   </div>
 );
@@ -1187,31 +1302,70 @@ export const AdminAddProductView: React.FC<{
   });
   const [images, setImages] = useState<string[]>(productToEdit?.images || []);
   const [videos, setVideos] = useState<string[]>(productToEdit?.videos || []);
+  const [aiGenerating, setAiGenerating] = useState(false);
+
+  const handleGenerateAiCopy = async () => {
+    playSound();
+    const firstDataImage = images.find((img) => typeof img === 'string' && img.startsWith('data:image/'));
+    if (!form.name.trim() && !firstDataImage) {
+      notify("Avval mahsulot nomini kiriting yoki rasm yuklang", 'error');
+      return;
+    }
+    setAiGenerating(true);
+    try {
+      const res = await safeFetchJSON('/api/ai/admin-copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim() || undefined,
+          category: form.category.trim() || undefined,
+          sizes: form.sizes.trim() || undefined,
+          priceYuan: form.price.trim() || undefined,
+          imageDataUrl: firstDataImage || undefined
+        })
+      });
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name.trim() ? prev.name : (res.suggestedName || prev.name),
+        desc: res.description || prev.desc,
+        category: prev.category.trim() ? prev.category : (res.suggestedCategory || prev.category),
+        sizes:
+          !prev.sizes.trim() || prev.sizes.trim() === 'S, M, L, XL'
+            ? (res.suggestedSizes || prev.sizes)
+            : prev.sizes,
+        weight:
+          !prev.weight.trim() || prev.weight.trim() === '0.5'
+            ? (res.suggestedWeightKg || prev.weight)
+            : prev.weight
+      }));
+      notify("AI mahsulot tavsifi va takliflarini tayyorladi!", 'success');
+    } catch (err: any) {
+      notify(err?.message || "AI tavsif yaratishda xatolik yuz berdi", 'error');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   const handleMedia = async (e: React.ChangeEvent<HTMLInputElement>, type: 'img' | 'vid') => {
     playSound();
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    notify(`${files.length} ta fayl optimallashtirilmoqda...`, 'info');
-    let added = 0;
-    for (const file of files) {
-      try {
-        if (type === 'img') {
-          const compressed = await compressImageFile(file, 'product');
-          setImages((prev) => [...prev, compressed]);
-          added += 1;
-        } else {
-          const dataUrl = await readVideoFileForVercel(file);
-          setVideos((prev) => [...prev, dataUrl]);
-          added += 1;
-        }
-      } catch (err: any) {
-        notify(err?.message || `${file.name} faylini yuklashda xatolik`, 'error');
-      }
-    }
-    e.target.value = '';
-    if (added > 0) {
-      notify(`${added} ta fayl tayyorlandi`, 'success');
+    notify(`${files.length} ta fayl yuklanmoqda...`, 'info');
+    try {
+      const uploadedUrls = await Promise.all(
+        files.map((file) =>
+          uploadMediaSmart(file, {
+            folder: type === 'img' ? 'products' : 'videos',
+            maxDim: 1400,
+            quality: 0.84
+          })
+        )
+      );
+      if (type === 'img') setImages((prev) => [...prev, ...uploadedUrls]);
+      else setVideos((prev) => [...prev, ...uploadedUrls]);
+      notify("Fayllar muvaffaqiyatli yuklandi", 'success');
+    } catch (err: any) {
+      notify(err?.message || "Fayllarni yuklashda xatolik", 'error');
     }
   };
 
@@ -1257,15 +1411,14 @@ export const AdminAddProductView: React.FC<{
     };
 
     try {
-      assertVercelPayloadSafe(newProduct);
       await safeFetchJSON('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProduct)
       });
       onAdd(newProduct);
-    } catch (err: any) {
-      notify(err?.message || "Mahsulotni saqlashda xatolik", 'error');
+    } catch {
+      notify("Mahsulotni saqlashda xatolik", 'error');
     }
   };
 
@@ -1287,13 +1440,13 @@ export const AdminAddProductView: React.FC<{
         }}
         action={
           <div className="flex gap-2">
-            <button type="button" onClick={() => setPreset('clothes')} className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium bg-white dark:bg-[#111827]">
+            <button type="button" onClick={() => setPreset('clothes')} className="px-3 py-1.5 rounded-xl yuyu-glass-subtle text-xs font-medium hover:bg-white/90 dark:hover:bg-slate-800">
               Kiyim
             </button>
-            <button type="button" onClick={() => setPreset('shoes')} className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium bg-white dark:bg-[#111827]">
+            <button type="button" onClick={() => setPreset('shoes')} className="px-3 py-1.5 rounded-xl yuyu-glass-subtle text-xs font-medium hover:bg-white/90 dark:hover:bg-slate-800">
               Oyoq kiyim
             </button>
-            <button type="button" onClick={() => setPreset('electronics')} className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium bg-white dark:bg-[#111827]">
+            <button type="button" onClick={() => setPreset('electronics')} className="px-3 py-1.5 rounded-xl yuyu-glass-subtle text-xs font-medium hover:bg-white/90 dark:hover:bg-slate-800">
               Elektronika
             </button>
           </div>
@@ -1301,11 +1454,11 @@ export const AdminAddProductView: React.FC<{
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-7 bg-white dark:bg-[#111827] p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+        <div className="lg:col-span-7 yuyu-glass p-7 rounded-3xl space-y-5">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Mahsulot nomi</label>
             <input
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-[#0F294A]"
+              className="w-full px-4 py-3 yuyu-glass-input rounded-xl text-sm outline-none focus:border-[#0F294A]"
               placeholder="Masalan: Wireless Headphones Pro"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -1317,7 +1470,7 @@ export const AdminAddProductView: React.FC<{
               <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Asl narxi (Yuan)</label>
               <input
                 type="number"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono outline-none focus:border-[#0F294A]"
+                className="w-full px-4 py-3 yuyu-glass-input rounded-xl text-sm font-mono outline-none focus:border-[#0F294A]"
                 value={form.price}
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
               />
@@ -1326,7 +1479,7 @@ export const AdminAddProductView: React.FC<{
               <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Eski narxi (ixtiyoriy)</label>
               <input
                 type="number"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono outline-none focus:border-[#0F294A]"
+                className="w-full px-4 py-3 yuyu-glass-input rounded-xl text-sm font-mono outline-none focus:border-[#0F294A]"
                 value={form.oldPrice}
                 onChange={(e) => setForm({ ...form, oldPrice: e.target.value })}
               />
@@ -1389,10 +1542,22 @@ export const AdminAddProductView: React.FC<{
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Tavsif</label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Tavsif</label>
+              <button
+                type="button"
+                onClick={handleGenerateAiCopy}
+                disabled={aiGenerating}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {aiGenerating ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                <span>{aiGenerating ? 'AI yozmoqda...' : 'AI bilan tavsif yozish'}</span>
+              </button>
+            </div>
             <textarea
               rows={4}
               className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none resize-none focus:border-[#0F294A]"
+              placeholder="Mahsulot tavsifini kiriting yoki yuqoridagi AI tugmasi bilan avtomatik yarating..."
               value={form.desc}
               onChange={(e) => setForm({ ...form, desc: e.target.value })}
             />
@@ -1441,11 +1606,11 @@ export const AdminAddProductView: React.FC<{
           )}
         </div>
 
-        <div className="lg:col-span-5 bg-white dark:bg-[#111827] p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+        <div className="lg:col-span-5 yuyu-glass-strong p-7 rounded-3xl space-y-6">
           <div className="space-y-3">
             <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Mahsulot rasmlari</p>
             <div className="flex flex-wrap gap-3">
-              <label className="w-24 h-24 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors">
+              <label className="w-24 h-24 border-2 border-dashed border-slate-300/80 dark:border-slate-700 rounded-2xl flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:bg-white/70 dark:hover:bg-slate-800/60 transition-colors">
                 <ImageIcon size={22} />
                 <span className="text-[11px] mt-1">Yuklash</span>
                 <input type="file" className="hidden" accept="image/*" multiple onChange={(e) => handleMedia(e, 'img')} />
@@ -1521,7 +1686,7 @@ export const ManageProductsView: React.FC<{
           <div className="relative w-64">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              className="w-full bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 py-2.5 pl-10 pr-3 rounded-xl text-sm outline-none focus:border-[#0F294A]"
+              className="w-full yuyu-glass-input py-2.5 pl-10 pr-3 rounded-xl text-sm outline-none focus:border-[#0F294A]"
               placeholder="Mahsulotni izlash..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -1530,49 +1695,52 @@ export const ManageProductsView: React.FC<{
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filtered.map((p) => (
-          <div
-            key={p.id}
-            className="bg-white dark:bg-[#111827] p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-4"
-          >
-            <div className="w-16 h-16 rounded-xl bg-[#F1F5F9] dark:bg-slate-800 p-1.5 shrink-0 overflow-hidden">
-              <SafeImage src={p.images?.[0]} alt={p.name} className="w-full h-full object-contain" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-slate-500">{p.category}</p>
-              <p className="font-semibold text-sm text-slate-900 dark:text-white truncate">{p.name}</p>
-              <p className="font-mono tabular-nums text-xs font-bold text-[#0F294A] dark:text-blue-400 mt-0.5">
-                {(p.pinduoduoPrice * MARKUP_RATE * CURRENCY_RATE).toLocaleString()} UZS
-              </p>
-            </div>
-            <div className="flex gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  playSound();
-                  onEdit(p);
-                }}
-                aria-label="Tahrirlash"
-                className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-              >
-                <Edit3 size={15} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  playSound();
-                  onDelete(p.id);
-                }}
-                aria-label="O'chirish"
-                className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-red-600 hover:border-red-200"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          </div>
+          <StaggerItem key={p.id}>
+            <motion.div
+              whileHover={{ y: -3 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 26 }}
+              className="yuyu-glass p-4 rounded-3xl flex items-center gap-4"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-white/75 dark:bg-slate-800/75 p-1.5 shrink-0 overflow-hidden">
+                <SafeImage src={p.images?.[0]} alt={p.name} className="w-full h-full object-contain" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-slate-500">{p.category}</p>
+                <p className="font-semibold text-sm text-slate-900 dark:text-white truncate">{p.name}</p>
+                <p className="font-mono tabular-nums text-xs font-bold text-[#0F294A] dark:text-blue-400 mt-0.5">
+                  {(p.pinduoduoPrice * MARKUP_RATE * CURRENCY_RATE).toLocaleString()} UZS
+                </p>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound();
+                    onEdit(p);
+                  }}
+                  aria-label="Tahrirlash"
+                  className="p-2 rounded-xl yuyu-glass-subtle text-slate-600 dark:text-slate-300 hover:bg-white/90 dark:hover:bg-slate-800"
+                >
+                  <Edit3 size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound();
+                    onDelete(p.id);
+                  }}
+                  aria-label="O'chirish"
+                  className="p-2 rounded-xl yuyu-glass-subtle text-slate-500 hover:text-red-600 hover:border-red-300"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </motion.div>
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerGrid>
     </div>
   );
 };
@@ -1633,11 +1801,15 @@ export const ManageBannersView: React.FC<{
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    notify("Banner rasmi siqilmoqda...", 'info');
+    notify("Rasm yuklanmoqda...", 'info');
     try {
-      const compressed = await compressImageFile(file, 'banner');
-      setForm((prev) => ({ ...prev, image: compressed }));
-      notify("Banner rasmi tayyor", 'success');
+      const uploadedUrl = await uploadMediaSmart(file, {
+        folder: 'banners',
+        maxDim: 1600,
+        quality: 0.86
+      });
+      setForm((prev) => ({ ...prev, image: uploadedUrl }));
+      notify("Banner rasmi yuklandi", 'success');
     } catch (err: any) {
       notify(err?.message || "Banner rasmini yuklashda xatolik", 'error');
     }
@@ -1665,108 +1837,124 @@ export const ManageBannersView: React.FC<{
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {banners.map((b) => (
-          <div
-            key={b.id}
-            className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col"
-          >
-            <div className="aspect-[16/9] bg-slate-100 dark:bg-slate-800 overflow-hidden">
-              <SafeImage src={b.image} alt={b.title} className="w-full h-full object-cover" />
-            </div>
-            <div className="p-5 flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
-                  {b.title}
-                </p>
-                <p className="text-xs text-slate-500 truncate">{b.subtitle}</p>
+          <StaggerItem key={b.id}>
+            <motion.div
+              whileHover={{ y: -3 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+              className="yuyu-glass rounded-3xl overflow-hidden flex flex-col"
+            >
+              <div className="aspect-[16/9] bg-slate-100/70 dark:bg-slate-800/70 overflow-hidden">
+                <SafeImage src={b.image} alt={b.title} className="w-full h-full object-cover" />
               </div>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingBanner(b);
-                    setForm({ title: b.title, subtitle: b.subtitle, image: b.image, link: b.link || '' });
-                    setShowModal(true);
-                  }}
-                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
-                >
-                  <Edit3 size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteBanner(b.id)}
-                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-red-600"
-                >
-                  <Trash2 size={15} />
-                </button>
+              <div className="p-5 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
+                    {b.title}
+                  </p>
+                  <p className="text-xs text-slate-500 truncate">{b.subtitle}</p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingBanner(b);
+                      setForm({ title: b.title, subtitle: b.subtitle, image: b.image, link: b.link || '' });
+                      setShowModal(true);
+                    }}
+                    className="p-2 rounded-xl yuyu-glass-subtle text-slate-600 dark:text-slate-300"
+                  >
+                    <Edit3 size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteBanner(b.id)}
+                    className="p-2 rounded-xl yuyu-glass-subtle text-slate-500 hover:text-red-600"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerGrid>
 
-      {showModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111827] w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 p-7 space-y-5 shadow-2xl">
-            <div className="flex justify-between items-center">
-              <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
-                {editingBanner ? 'Bannerni tahrirlash' : 'Yangi banner'}
-              </h3>
-              <button type="button" onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="space-y-3.5">
-              <input
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
-                placeholder="Sarlavha"
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-              />
-              <input
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
-                placeholder="Tavsif matni"
-                value={form.subtitle}
-                onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
-              />
-              <input
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
-                placeholder="Havola (masalan: catalog)"
-                value={form.link}
-                onChange={(e) => setForm({ ...form, link: e.target.value })}
-              />
-              <label className="block w-full p-6 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-center text-slate-500 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900">
-                {form.image ? (
-                  <img src={form.image} alt="Banner" className="h-24 mx-auto rounded-lg object-cover" />
-                ) : (
-                  <div className="space-y-1">
-                    <UploadCloud size={26} className="mx-auto text-slate-400" />
-                    <span className="text-xs font-medium">Banner rasmini yuklang</span>
-                  </div>
-                )}
-                <input type="file" className="hidden" accept="image/*" onChange={handleImage} />
-              </label>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                className="flex-1 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold"
-              >
-                Bekor qilish
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                className="flex-1 py-2.5 bg-[#0F294A] dark:bg-blue-600 text-white rounded-xl text-xs font-semibold"
-              >
-                Saqlash
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {showModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-slate-950/50 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+              className="yuyu-glass-strong w-full max-w-md rounded-3xl p-7 space-y-5 shadow-2xl"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
+                  {editingBanner ? 'Bannerni tahrirlash' : 'Yangi banner'}
+                </h3>
+                <button type="button" onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-white/70 dark:hover:bg-slate-800">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="space-y-3.5">
+                <input
+                  className="w-full px-4 py-3 yuyu-glass-input rounded-xl text-sm outline-none"
+                  placeholder="Sarlavha"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                />
+                <input
+                  className="w-full px-4 py-3 yuyu-glass-input rounded-xl text-sm outline-none"
+                  placeholder="Tavsif matni"
+                  value={form.subtitle}
+                  onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
+                />
+                <input
+                  className="w-full px-4 py-3 yuyu-glass-input rounded-xl text-sm outline-none"
+                  placeholder="Havola (masalan: catalog)"
+                  value={form.link}
+                  onChange={(e) => setForm({ ...form, link: e.target.value })}
+                />
+                <label className="block w-full p-6 border-2 border-dashed border-slate-300/80 dark:border-slate-700 rounded-2xl text-center text-slate-500 cursor-pointer hover:bg-white/60 dark:hover:bg-slate-900/60">
+                  {form.image ? (
+                    <img src={form.image} alt="Banner" className="h-24 mx-auto rounded-lg object-cover" />
+                  ) : (
+                    <div className="space-y-1">
+                      <UploadCloud size={26} className="mx-auto text-slate-400" />
+                      <span className="text-xs font-medium">Banner rasmini yuklang</span>
+                    </div>
+                  )}
+                  <input type="file" className="hidden" accept="image/*" onChange={handleImage} />
+                </label>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 py-2.5 yuyu-glass-subtle rounded-xl text-xs font-semibold"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="flex-1 py-2.5 bg-[#0F294A] dark:bg-blue-600 text-white rounded-xl text-xs font-semibold"
+                >
+                  Saqlash
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -1787,7 +1975,7 @@ export const UserSearchView: React.FC<{ users: User[]; onBack: () => void }> = (
           <div className="relative w-64">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              className="w-full bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 py-2.5 pl-10 pr-3 rounded-xl text-sm outline-none focus:border-[#0F294A]"
+              className="w-full yuyu-glass-input py-2.5 pl-10 pr-3 rounded-xl text-sm outline-none focus:border-[#0F294A]"
               placeholder="Ism yoki telefon..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -1796,25 +1984,27 @@ export const UserSearchView: React.FC<{ users: User[]; onBack: () => void }> = (
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((u) => (
-          <div
-            key={u.telegramId}
-            className="flex items-center gap-4 p-4 bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800"
-          >
-            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 bg-slate-100 dark:bg-slate-800">
-              <SafeImage src={u.avatar} alt={u.username} className="w-full h-full object-cover" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sm text-slate-900 dark:text-white truncate">{u.username}</p>
-              <p className="text-xs font-mono text-slate-500 truncate">{u.telegramId}</p>
-            </div>
-            {u.isAdmin && (
-              <span className="text-xs font-semibold text-[#0F294A] dark:text-blue-400">Admin</span>
-            )}
-          </div>
+          <StaggerItem key={u.telegramId}>
+            <motion.div
+              whileHover={{ y: -2 }}
+              className="flex items-center gap-4 p-4 yuyu-glass rounded-3xl"
+            >
+              <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 bg-white/75 dark:bg-slate-800/75">
+                <SafeImage src={u.avatar} alt={u.username} className="w-full h-full object-cover" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-sm text-slate-900 dark:text-white truncate">{u.username}</p>
+                <p className="text-xs font-mono text-slate-500 truncate">{u.telegramId}</p>
+              </div>
+              {u.isAdmin && (
+                <span className="text-xs font-semibold text-[#0F294A] dark:text-blue-400">Admin</span>
+              )}
+            </motion.div>
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerGrid>
     </div>
   );
 };
@@ -1840,16 +2030,20 @@ export const WishlistView: React.FC<{
         }}
       />
       {wishlistProducts.length === 0 ? (
-        <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 py-20 text-center space-y-3">
-          <Heart size={36} strokeWidth={1.3} className="mx-auto text-slate-300 dark:text-slate-600" />
-          <p className="text-sm text-slate-500">Hali hech qanday mahsulot saqlanmagan.</p>
-        </div>
+        <GlassReveal>
+          <div className="yuyu-glass rounded-3xl py-20 text-center space-y-3">
+            <Heart size={36} strokeWidth={1.3} className="mx-auto text-slate-300 dark:text-slate-600" />
+            <p className="text-sm text-slate-500">Hali hech qanday mahsulot saqlanmagan.</p>
+          </div>
+        </GlassReveal>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StaggerGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {wishlistProducts.map((p) => (
-            <ProductCard key={p.id} product={p} onClick={() => onProductClick(p)} />
+            <StaggerItem key={p.id}>
+              <ProductCard product={p} onClick={() => onProductClick(p)} />
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerGrid>
       )}
     </div>
   );
@@ -1894,7 +2088,7 @@ export const SupportView: React.FC<{
           onBack();
         }}
       />
-      <div className="bg-white dark:bg-[#111827] p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+      <div className="yuyu-glass p-7 rounded-3xl space-y-5">
         <div className="space-y-1">
           <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
             Admin bilan bog'lanish
@@ -1907,17 +2101,19 @@ export const SupportView: React.FC<{
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="Xabaringizni kiriting..."
-          className="w-full h-40 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm outline-none resize-none focus:border-[#0F294A]"
+          className="w-full h-40 yuyu-glass-input rounded-2xl p-4 text-sm outline-none resize-none focus:border-[#0F294A]"
         />
-        <button
+        <motion.button
           type="button"
+          whileHover={{ y: -1, scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
           onClick={handleSend}
           disabled={isSending}
-          className="px-6 py-3 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl inline-flex items-center gap-2 text-sm disabled:opacity-50"
+          className="px-6 py-3 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl inline-flex items-center gap-2 text-sm disabled:opacity-50 shadow-md shadow-blue-950/15"
         >
           {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           <span>Xabar yuborish</span>
-        </button>
+        </motion.button>
       </div>
     </div>
   );
@@ -1937,10 +2133,15 @@ export const PartnershipView: React.FC<{
   const handleReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    notify("Chek rasmi siqilmoqda...", 'info');
+    notify("Chek rasmi yuklanmoqda...", 'info');
     try {
-      const compressed = await compressImageFile(file, 'receipt');
-      setReceipt(compressed);
+      const uploadedUrl = await uploadMediaSmart(file, {
+        folder: 'receipts',
+        maxDim: 1400,
+        quality: 0.84
+      });
+      setReceipt(uploadedUrl);
+      notify("Chek rasmi yuklandi", 'success');
     } catch (err: any) {
       notify(err?.message || "Chek rasmini yuklashda xatolik", 'error');
     }
@@ -1953,17 +2154,15 @@ export const PartnershipView: React.FC<{
     }
     playSound();
     try {
-      const payload = { userId: user.telegramId, username: user.username, type, receipt };
-      assertVercelPayloadSafe(payload);
       await safeFetchJSON('/api/partnerships', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ userId: user.telegramId, username: user.username, type, receipt })
       });
       notify(t.partnershipSuccess, 'success');
       onBack();
-    } catch (err: any) {
-      notify(err?.message || "So'rov yuborishda xatolik", 'error');
+    } catch {
+      notify("So'rov yuborishda xatolik", 'error');
     }
   };
 
@@ -1978,15 +2177,15 @@ export const PartnershipView: React.FC<{
         }}
       />
 
-      <div className="bg-white dark:bg-[#111827] p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+      <div className="yuyu-glass p-7 rounded-3xl space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button
             type="button"
             onClick={() => setType('40')}
-            className={`p-5 rounded-xl border text-left space-y-1 transition-colors ${
+            className={`p-5 rounded-2xl border text-left space-y-1 transition-all ${
               type === '40'
-                ? 'border-[#0F294A] bg-[#EEF4FA]/60 dark:border-blue-500 dark:bg-blue-950/30'
-                : 'border-slate-200 dark:border-slate-700'
+                ? 'border-[#0F294A] bg-blue-50/75 dark:border-blue-500 dark:bg-blue-950/40 shadow-sm'
+                : 'border-white/70 dark:border-slate-700/70 bg-white/45 dark:bg-slate-900/45'
             }`}
           >
             <p className="font-display font-bold text-base text-slate-900 dark:text-white">
@@ -1997,10 +2196,10 @@ export const PartnershipView: React.FC<{
           <button
             type="button"
             onClick={() => setType('55')}
-            className={`p-5 rounded-xl border text-left space-y-1 transition-colors ${
+            className={`p-5 rounded-2xl border text-left space-y-1 transition-all ${
               type === '55'
-                ? 'border-[#0F294A] bg-[#EEF4FA]/60 dark:border-blue-500 dark:bg-blue-950/30'
-                : 'border-slate-200 dark:border-slate-700'
+                ? 'border-[#0F294A] bg-blue-50/75 dark:border-blue-500 dark:bg-blue-950/40 shadow-sm'
+                : 'border-white/70 dark:border-slate-700/70 bg-white/45 dark:bg-slate-900/45'
             }`}
           >
             <p className="font-display font-bold text-base text-slate-900 dark:text-white">
@@ -2010,7 +2209,7 @@ export const PartnershipView: React.FC<{
           </button>
         </div>
 
-        <div className="bg-slate-50 dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+        <div className="yuyu-glass-subtle p-5 rounded-2xl flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs text-slate-500">To'lov kartasi ({CARD_OWNER})</p>
             <p className="font-mono font-bold text-base text-slate-900 dark:text-white mt-0.5">
@@ -2023,13 +2222,13 @@ export const PartnershipView: React.FC<{
               navigator.clipboard.writeText(CARD_NUMBER);
               notify("Karta raqami nusxalandi", 'success');
             }}
-            className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold"
+            className="px-3.5 py-2 rounded-xl yuyu-glass-subtle text-xs font-semibold hover:bg-white/90 dark:hover:bg-slate-800"
           >
             Nusxalash
           </button>
         </div>
 
-        <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900 overflow-hidden">
+        <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-300/80 dark:border-slate-700 rounded-2xl cursor-pointer hover:bg-white/60 dark:hover:bg-slate-900/60 overflow-hidden">
           {receipt ? (
             <img src={receipt} alt="Chek" className="w-full h-full object-contain" />
           ) : (
@@ -2041,13 +2240,15 @@ export const PartnershipView: React.FC<{
           <input type="file" accept="image/*" onChange={handleReceipt} className="hidden" />
         </label>
 
-        <button
+        <motion.button
           type="button"
+          whileHover={{ y: -2, scale: 1.01 }}
+          whileTap={{ scale: 0.98 }}
           onClick={handleSubmit}
-          className="w-full py-3.5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl text-sm transition-colors"
+          className="w-full py-3.5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl text-sm transition-colors shadow-lg shadow-blue-950/15"
         >
           So'rov yuborish
-        </button>
+        </motion.button>
       </div>
     </div>
   );
@@ -2073,33 +2274,37 @@ export const PromoCodesView: React.FC<{
         }}
       />
       {myCodes.length === 0 ? (
-        <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 py-20 text-center space-y-3">
-          <Lock size={36} strokeWidth={1.3} className="mx-auto text-slate-300 dark:text-slate-600" />
-          <p className="text-sm text-slate-500">
-            Sizda hali promo-kodlar yo'q. Hamkorlik dasturiga qo'shilib chegirma kodlariga ega bo'ling.
-          </p>
-        </div>
+        <GlassReveal>
+          <div className="yuyu-glass rounded-3xl py-20 text-center space-y-3">
+            <Lock size={36} strokeWidth={1.3} className="mx-auto text-slate-300 dark:text-slate-600" />
+            <p className="text-sm text-slate-500">
+              Sizda hali promo-kodlar yo'q. Hamkorlik dasturiga qo'shilib chegirma kodlariga ega bo'ling.
+            </p>
+          </div>
+        </GlassReveal>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <StaggerGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {myCodes.map((p) => (
-            <div
-              key={p.id}
-              className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4"
-            >
-              <div>
-                <p className="text-xl font-mono font-bold text-[#0F294A] dark:text-blue-400">{p.code}</p>
-                <p className="text-xs text-slate-500">Chegirma: {Math.round(p.discount * 100)}%</p>
-              </div>
-              <span
-                className={`text-xs font-semibold ${
-                  p.isUsed ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'
-                }`}
+            <StaggerItem key={p.id}>
+              <motion.div
+                whileHover={{ y: -3 }}
+                className="yuyu-glass p-5 rounded-3xl flex items-center justify-between gap-4"
               >
-                {p.isUsed ? 'Ishlatilgan' : 'Faol'}
-              </span>
-            </div>
+                <div>
+                  <p className="text-xl font-mono font-bold text-[#0F294A] dark:text-blue-400">{p.code}</p>
+                  <p className="text-xs text-slate-500">Chegirma: {Math.round(p.discount * 100)}%</p>
+                </div>
+                <span
+                  className={`text-xs font-semibold ${
+                    p.isUsed ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'
+                  }`}
+                >
+                  {p.isUsed ? 'Ishlatilgan' : 'Faol'}
+                </span>
+              </motion.div>
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerGrid>
       )}
     </div>
   );
@@ -2120,48 +2325,50 @@ export const AdminPartnershipsView: React.FC<{
         onBack();
       }}
     />
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {partnerships.map((p) => (
-        <div
-          key={p.id}
-          className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-display font-bold text-base text-slate-900 dark:text-white">
-                {p.username}
-              </p>
-              <p className="text-xs font-mono text-slate-500">{p.date}</p>
+        <StaggerItem key={p.id}>
+          <motion.div
+            whileHover={{ y: -2 }}
+            className="yuyu-glass p-6 rounded-3xl space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-display font-bold text-base text-slate-900 dark:text-white">
+                  {p.username}
+                </p>
+                <p className="text-xs font-mono text-slate-500">{p.date}</p>
+              </div>
+              <span className="text-xs font-semibold text-[#0F294A] dark:text-blue-400">{p.status}</span>
             </div>
-            <span className="text-xs font-semibold text-[#0F294A] dark:text-blue-400">{p.status}</span>
-          </div>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Dastur: <strong>{p.type === '40' ? '20 000 UZS (40%)' : '30 000 UZS (55%)'}</strong>
-          </p>
-          {p.receipt && (
-            <img src={p.receipt} alt="Hamkorlik cheki" className="w-full h-44 object-cover rounded-xl" />
-          )}
-          {p.status === 'pending' && (
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => onUpdate(p.id, 'approved')}
-                className="py-2.5 bg-emerald-600 text-white font-semibold rounded-xl text-xs"
-              >
-                Tasdiqlash
-              </button>
-              <button
-                type="button"
-                onClick={() => onUpdate(p.id, 'rejected')}
-                className="py-2.5 bg-red-600 text-white font-semibold rounded-xl text-xs"
-              >
-                Rad etish
-              </button>
-            </div>
-          )}
-        </div>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Dastur: <strong>{p.type === '40' ? '20 000 UZS (40%)' : '30 000 UZS (55%)'}</strong>
+            </p>
+            {p.receipt && (
+              <img src={p.receipt} alt="Hamkorlik cheki" className="w-full h-44 object-cover rounded-2xl" />
+            )}
+            {p.status === 'pending' && (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => onUpdate(p.id, 'approved')}
+                  className="py-2.5 bg-emerald-600 text-white font-semibold rounded-xl text-xs"
+                >
+                  Tasdiqlash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onUpdate(p.id, 'rejected')}
+                  className="py-2.5 bg-red-600 text-white font-semibold rounded-xl text-xs"
+                >
+                  Rad etish
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </StaggerItem>
       ))}
-    </div>
+    </StaggerGrid>
   </div>
 );
 
@@ -2179,20 +2386,22 @@ export const AdminSupportView: React.FC<{
         onBack();
       }}
     />
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 gap-5">
       {messages.map((m) => (
-        <div
-          key={m.id}
-          className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5"
-        >
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-900 dark:text-white">{m.username}</span>
-            <span className="font-mono text-slate-400">{m.date}</span>
-          </div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{m.message}</p>
-        </div>
+        <StaggerItem key={m.id}>
+          <motion.div
+            whileHover={{ y: -2 }}
+            className="yuyu-glass p-6 rounded-3xl space-y-2.5"
+          >
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-900 dark:text-white">{m.username}</span>
+              <span className="font-mono text-slate-400">{m.date}</span>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{m.message}</p>
+          </motion.div>
+        </StaggerItem>
       ))}
-    </div>
+    </StaggerGrid>
   </div>
 );
 
@@ -2225,15 +2434,15 @@ export const ReferralView: React.FC<{
         }}
       />
 
-      <div className="bg-white dark:bg-[#111827] p-8 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+      <div className="yuyu-glass p-8 rounded-3xl space-y-6">
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-5 bg-slate-50 dark:bg-slate-900 rounded-xl space-y-1">
+          <div className="p-5 yuyu-glass-subtle rounded-2xl space-y-1">
             <p className="text-xs text-slate-500">Jami bonuslar</p>
             <p className="font-mono tabular-nums text-2xl font-bold text-[#0F294A] dark:text-blue-400">
               {(user.referralBalance || 0).toLocaleString()} UZS
             </p>
           </div>
-          <div className="p-5 bg-slate-50 dark:bg-slate-900 rounded-xl space-y-1">
+          <div className="p-5 yuyu-glass-subtle rounded-2xl space-y-1">
             <p className="text-xs text-slate-500">Taklif qilinganlar</p>
             <p className="font-mono tabular-nums text-2xl font-bold text-slate-900 dark:text-white">
               {user.invitedCount || 0}
@@ -2249,16 +2458,18 @@ export const ReferralView: React.FC<{
             <input
               readOnly
               value={refLink}
-              className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-3 rounded-xl text-xs font-mono truncate outline-none"
+              className="flex-1 yuyu-glass-input px-4 py-3 rounded-xl text-xs font-mono truncate outline-none"
             />
-            <button
+            <motion.button
               type="button"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.96 }}
               onClick={handleCopy}
-              className="px-5 py-3 bg-[#0F294A] dark:bg-blue-600 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5"
+              className="px-5 py-3 bg-[#0F294A] dark:bg-blue-600 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shadow-md shadow-blue-950/15"
             >
               {copied ? <Check size={15} /> : <Copy size={15} />}
               <span>{copied ? 'Nusxalandi' : 'Nusxalash'}</span>
-            </button>
+            </motion.button>
           </div>
         </div>
       </div>

@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ShoppingCart, ChevronLeft, Trash2, CreditCard, Package, Truck, MapPin,
   Copy, UploadCloud, ShieldCheck, Loader2, Check, Receipt, Clock, CheckCircle2, ArrowRight,
-  Crown, Wallet
+  Crown, Wallet, Zap, XCircle
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Order, Product, User, View } from '../types';
+import { Order, Product, User, View, ResaleListing } from '../types';
 import {
   MARKUP_RATE, CURRENCY_RATE, CARD_NUMBER, CARD_OWNER,
   DELIVERY_RATES, PICKUP_ADDRESS, USD_RATE, CARGO_RATE_USD
@@ -13,12 +13,15 @@ import {
 import { SafeImage } from './YuyuPrimitives';
 import { CartRecommendationsSection } from './CartRecommendationsSection';
 import { CartSavingsNudge } from './VipComponents';
+import { ResaleListingModal } from './TayyorBozorViews';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   getEffectiveVipStatus,
   getRegularPriceUzs,
   getEffectiveProductPriceUzs
 } from '../utils/vip';
-import { compressImageFile } from '../utils/mediaCompress';
+import { StaggerGrid, StaggerItem, GlassReveal } from './GlassMotionPrimitives';
+import { uploadMediaSmart } from '../utils/r2MediaUpload';
 
 export const CartView: React.FC<{
   t: any;
@@ -53,7 +56,7 @@ export const CartView: React.FC<{
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between pb-6 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex items-center justify-between pb-6 border-b border-slate-200/70 dark:border-slate-800/70">
         <div className="space-y-1">
           <h1 className="font-display text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
             {t.cart}
@@ -62,42 +65,48 @@ export const CartView: React.FC<{
             Savatda {cart.length} ta mahsulot mavjud
           </p>
         </div>
-        <button
+        <motion.button
           type="button"
+          whileHover={{ x: -2 }}
+          whileTap={{ scale: 0.97 }}
           onClick={() => {
             playSound();
             onBack();
           }}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-[#0F294A] dark:hover:text-white"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl yuyu-glass-subtle text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-[#0F294A] dark:hover:text-white transition-colors"
         >
           <ChevronLeft size={16} />
           <span>Xaridni davom ettirish</span>
-        </button>
+        </motion.button>
       </div>
 
       {cart.length === 0 ? (
-        <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 py-20 text-center space-y-4">
-          <ShoppingCart size={44} strokeWidth={1.3} className="mx-auto text-slate-300 dark:text-slate-600" />
-          <div className="space-y-1">
-            <p className="font-display font-semibold text-lg text-slate-900 dark:text-white">
-              {t.emptyCart}
-            </p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Katalogdan o'zingizga yoqqan mahsulotlarni qo'shing.
-            </p>
+        <GlassReveal>
+          <div className="yuyu-glass rounded-3xl py-20 text-center space-y-4">
+            <ShoppingCart size={44} strokeWidth={1.3} className="mx-auto text-slate-300 dark:text-slate-600" />
+            <div className="space-y-1">
+              <p className="font-display font-semibold text-lg text-slate-900 dark:text-white">
+                {t.emptyCart}
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Katalogdan o'zingizga yoqqan mahsulotlarni qo'shing.
+              </p>
+            </div>
+            <motion.button
+              type="button"
+              whileHover={{ y: -2, scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => {
+                playSound();
+                onBack();
+              }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-blue-950/15"
+            >
+              <span>Xaridni boshlash</span>
+              <ArrowRight size={16} />
+            </motion.button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              playSound();
-              onBack();
-            }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors"
-          >
-            <span>Xaridni boshlash</span>
-            <ArrowRight size={16} />
-          </button>
-        </div>
+        </GlassReveal>
       ) : (
         <div className="space-y-6">
           <CartSavingsNudge
@@ -109,81 +118,93 @@ export const CartView: React.FC<{
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Itemized List */}
             <div className="lg:col-span-8 space-y-4">
-              {cart.map((item: any) => {
-                const regularPrice = getRegularPriceUzs(item.product);
-                const itemPrice = getEffectiveProductPriceUzs(item.product, currentUser);
-                const hasVipDiscount = itemPrice < regularPrice;
-                return (
-                  <div
-                    key={item.id}
-                    className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center gap-5"
-                  >
-                    <div className="w-24 h-24 rounded-xl bg-[#F1F5F9] dark:bg-slate-800 p-2 shrink-0 flex items-center justify-center overflow-hidden">
-                      <SafeImage
-                        src={item.product.images?.[0]}
-                        alt={item.product.name}
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {item.product.category} · Variant: {item.size}
-                        {(item.quantity || 1) > 1 ? ` · ${item.quantity} dona` : ''}
-                      </p>
-                      <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
-                        {item.product.name}
-                      </h3>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {hasVipDiscount && (
-                          <span className="font-mono tabular-nums text-xs text-slate-400 line-through">
-                            {(regularPrice * (item.quantity || 1)).toLocaleString()} so'm
-                          </span>
-                        )}
-                        <p className="font-mono tabular-nums text-base font-bold text-[#0F294A] dark:text-blue-400">
-                          {(itemPrice * (item.quantity || 1)).toLocaleString()} so'm
-                        </p>
-                        {hasVipDiscount && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/40 text-amber-600 dark:text-amber-300 text-[10px] font-mono font-bold">
-                            <Crown size={10} />
-                            <span>VIP narx</span>
-                          </span>
-                        )}
+              <AnimatePresence mode="popLayout">
+                {cart.map((item: any) => {
+                  const regularPrice = getRegularPriceUzs(item.product);
+                  const itemPrice = getEffectiveProductPriceUzs(item.product, currentUser);
+                  const hasVipDiscount = itemPrice < regularPrice;
+                  return (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, y: 14, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -32, scale: 0.95 }}
+                      transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+                      whileHover={{ y: -2 }}
+                      className="yuyu-glass p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center gap-5"
+                    >
+                      <div className="w-24 h-24 rounded-2xl bg-white/75 dark:bg-slate-800/75 border border-white/80 dark:border-slate-700/60 p-2 shrink-0 flex items-center justify-center overflow-hidden">
+                        <SafeImage
+                          src={item.product.images?.[0]}
+                          alt={item.product.name}
+                          className="w-full h-full object-contain"
+                        />
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          playSound();
-                          onCheckout(item);
-                        }}
-                        className="px-4 py-2.5 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white text-xs font-semibold transition-colors whitespace-nowrap"
-                      >
-                        Rasmiylashtirish
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          playSound();
-                          onRemove(item.id);
-                        }}
-                        aria-label="O'chirish"
-                        className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-red-600 hover:border-red-200 dark:hover:border-red-900/50 transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {item.product.category} · Variant: {item.size}
+                          {(item.quantity || 1) > 1 ? ` · ${item.quantity} dona` : ''}
+                        </p>
+                        <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
+                          {item.product.name}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {hasVipDiscount && (
+                            <span className="font-mono tabular-nums text-xs text-slate-400 line-through">
+                              {(regularPrice * (item.quantity || 1)).toLocaleString()} so'm
+                            </span>
+                          )}
+                          <p className="font-mono tabular-nums text-base font-bold text-[#0F294A] dark:text-blue-400">
+                            {(itemPrice * (item.quantity || 1)).toLocaleString()} so'm
+                          </p>
+                          {hasVipDiscount && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/40 text-amber-600 dark:text-amber-300 text-[10px] font-mono font-bold">
+                              <Crown size={10} />
+                              <span>VIP narx</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <motion.button
+                          type="button"
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.96 }}
+                          onClick={() => {
+                            playSound();
+                            onCheckout(item);
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white text-xs font-semibold transition-colors whitespace-nowrap shadow-md shadow-blue-950/15"
+                        >
+                          Rasmiylashtirish
+                        </motion.button>
+                        <motion.button
+                          type="button"
+                          whileHover={{ scale: 1.06 }}
+                          whileTap={{ scale: 0.92 }}
+                          onClick={() => {
+                            playSound();
+                            onRemove(item.id);
+                          }}
+                          aria-label="O'chirish"
+                          className="p-2.5 rounded-xl yuyu-glass-subtle text-slate-500 hover:text-red-600 hover:border-red-300/70 dark:hover:border-red-900/60 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
             </div>
 
             {/* Sticky Summary Panel */}
-            <aside className="lg:col-span-4 lg:sticky lg:top-24 bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+            <aside className="lg:col-span-4 lg:sticky lg:top-24 yuyu-glass-strong p-6 rounded-3xl space-y-5">
               <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
                 Buyurtma xulosasi
               </h2>
-              <div className="space-y-3 text-sm border-y border-slate-100 dark:border-slate-800 py-4">
+              <div className="space-y-3 text-sm border-y border-slate-200/60 dark:border-slate-700/60 py-4">
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
                   <span>Mahsulotlar soni</span>
                   <span className="font-mono tabular-nums font-medium text-slate-900 dark:text-white">
@@ -200,16 +221,18 @@ export const CartView: React.FC<{
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 Har bir mahsulot alohida buyurtma sifatida rasmiylashtiriladi va trek raqami biriktiriladi.
               </p>
-              <button
+              <motion.button
                 type="button"
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => {
                   playSound();
                   onCheckout(cart[0]);
                 }}
-                className="w-full py-3.5 px-5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl text-sm transition-colors"
+                className="w-full py-3.5 px-5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl text-sm transition-colors shadow-lg shadow-blue-950/15"
               >
                 Birinchi mahsulotni to'lash
-              </button>
+              </motion.button>
             </aside>
           </div>
         </div>
@@ -325,11 +348,21 @@ export const PaymentView: React.FC<{
 
   const handleFile = async (file: File) => {
     playSound();
+    if (!file.type.startsWith('image/')) {
+      notify("Iltimos, faqat rasm faylini yuklang", 'error');
+      return;
+    }
+    notify("Chek rasmi yuklanmoqda...", 'info');
     try {
-      const compressed = await compressImageFile(file, 'receipt');
-      setReceipt(compressed);
+      const uploadedUrl = await uploadMediaSmart(file, {
+        folder: 'receipts',
+        maxDim: 1400,
+        quality: 0.84
+      });
+      setReceipt(uploadedUrl);
+      notify("Chek rasmi yuklandi", 'success');
     } catch (err: any) {
-      notify(err?.message || "Rasmni qayta ishlashda xatolik", 'error');
+      notify(err?.message || "Chek rasmini yuklashda xatolik", 'error');
     }
   };
 
@@ -391,17 +424,19 @@ export const PaymentView: React.FC<{
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
-        <button
+      <div className="flex items-center gap-4 pb-6 border-b border-slate-200/70 dark:border-slate-800/70">
+        <motion.button
           type="button"
+          whileHover={{ x: -2 }}
+          whileTap={{ scale: 0.94 }}
           onClick={() => {
             playSound();
             onBack();
           }}
-          className="p-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800"
+          className="p-2.5 yuyu-glass-subtle rounded-xl hover:bg-white/80 dark:hover:bg-slate-800/80 transition-colors"
         >
           <ChevronLeft size={18} />
-        </button>
+        </motion.button>
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
             {t.paymentTitle}
@@ -414,7 +449,7 @@ export const PaymentView: React.FC<{
         {/* Left 7 Cols: Delivery, Promo & Receipt Upload */}
         <div className="lg:col-span-7 space-y-6">
           {/* Delivery Method Card */}
-          <div className="bg-white dark:bg-[#111827] p-6 sm:p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+          <div className="yuyu-glass p-6 sm:p-7 rounded-3xl space-y-5">
             <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
               Yetkazib berish usuli
             </h2>
@@ -425,10 +460,10 @@ export const PaymentView: React.FC<{
                   playSound();
                   setDeliveryMethod('pickup');
                 }}
-                className={`p-4 rounded-xl border text-left transition-colors space-y-1.5 ${
+                className={`p-4 rounded-2xl border text-left transition-all space-y-1.5 ${
                   deliveryMethod === 'pickup'
-                    ? 'border-[#0F294A] bg-[#EEF4FA]/60 dark:border-blue-500 dark:bg-blue-950/30'
-                    : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    ? 'border-[#0F294A] bg-blue-50/75 dark:border-blue-500 dark:bg-blue-950/40 shadow-sm'
+                    : 'border-white/70 dark:border-slate-700/70 bg-white/45 dark:bg-slate-900/45 hover:bg-white/75 dark:hover:bg-slate-800/60'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -448,10 +483,10 @@ export const PaymentView: React.FC<{
                   playSound();
                   setDeliveryMethod('courier');
                 }}
-                className={`p-4 rounded-xl border text-left transition-colors space-y-1.5 ${
+                className={`p-4 rounded-2xl border text-left transition-all space-y-1.5 ${
                   deliveryMethod === 'courier'
-                    ? 'border-[#0F294A] bg-[#EEF4FA]/60 dark:border-blue-500 dark:bg-blue-950/30'
-                    : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    ? 'border-[#0F294A] bg-blue-50/75 dark:border-blue-500 dark:bg-blue-950/40 shadow-sm'
+                    : 'border-white/70 dark:border-slate-700/70 bg-white/45 dark:bg-slate-900/45 hover:bg-white/75 dark:hover:bg-slate-800/60'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -465,7 +500,7 @@ export const PaymentView: React.FC<{
             </div>
 
             {deliveryMethod === 'pickup' ? (
-              <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
+              <div className="yuyu-glass-subtle p-4 rounded-2xl space-y-1.5">
                 <div className="flex items-center gap-2 text-xs font-semibold text-[#0F294A] dark:text-blue-400">
                   <MapPin size={14} />
                   <span>YUYU Shop topshirish punkti</span>
@@ -485,7 +520,7 @@ export const PaymentView: React.FC<{
                       playSound();
                       setSelectedRegion(e.target.value);
                     }}
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-[#0F294A]"
+                    className="w-full yuyu-glass-input rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-[#0F294A]"
                   >
                     {DELIVERY_RATES.map((r) => (
                       <option key={r.region} value={r.region}>
@@ -499,7 +534,7 @@ export const PaymentView: React.FC<{
                     Aniq manzil (ko'cha, uy, xonadon)
                   </label>
                   <textarea
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm outline-none focus:border-[#0F294A] resize-none"
+                    className="w-full yuyu-glass-input rounded-xl p-4 text-sm outline-none focus:border-[#0F294A] resize-none"
                     placeholder="Masalan: Navoiy ko'chasi, 12-uy, 4-xonadon"
                     rows={2}
                     value={address}
@@ -510,7 +545,7 @@ export const PaymentView: React.FC<{
             )}
 
             {/* Promo Code Row */}
-            <div className="pt-5 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+            <div className="pt-5 border-t border-slate-200/60 dark:border-slate-800/70 space-y-2.5">
               <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">
                 Promo-kod (ixtiyoriy)
               </label>
@@ -519,7 +554,7 @@ export const PaymentView: React.FC<{
                   value={promoCode}
                   onChange={(e) => setPromoCode(e.target.value)}
                   placeholder="Kodni kiriting"
-                  className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm font-mono uppercase outline-none focus:border-[#0F294A]"
+                  className="flex-1 yuyu-glass-input rounded-xl px-4 py-2.5 text-sm font-mono uppercase outline-none focus:border-[#0F294A]"
                 />
                 <button
                   type="button"
@@ -579,7 +614,7 @@ export const PaymentView: React.FC<{
           </div>
 
           {/* Receipt Uploader */}
-          <div className="bg-white dark:bg-[#111827] p-6 sm:p-7 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="yuyu-glass p-6 sm:p-7 rounded-3xl space-y-4">
             <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
               {t.uploadReceipt}
             </h2>
@@ -598,10 +633,10 @@ export const PaymentView: React.FC<{
                 const file = e.dataTransfer.files?.[0];
                 if (file) handleFile(file);
               }}
-              className={`flex flex-col items-center justify-center w-full h-52 border-2 border-dashed rounded-xl cursor-pointer transition-colors relative overflow-hidden ${
+              className={`flex flex-col items-center justify-center w-full h-52 border-2 border-dashed rounded-2xl cursor-pointer transition-colors relative overflow-hidden ${
                 isDragging
-                  ? 'border-[#0F294A] bg-[#EEF4FA]/60 dark:bg-blue-950/30'
-                  : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900'
+                  ? 'border-[#0F294A] bg-blue-50/70 dark:bg-blue-950/35'
+                  : 'border-slate-300/70 dark:border-slate-700/80 bg-white/40 dark:bg-slate-900/40 hover:bg-white/70 dark:hover:bg-slate-800/50'
               }`}
             >
               {receipt ? (
@@ -636,7 +671,11 @@ export const PaymentView: React.FC<{
 
         {/* Right 5 Cols: Payment Card + Itemized Totals */}
         <aside className="lg:col-span-5 lg:sticky lg:top-24 space-y-6">
-          <div className="bg-[#0F294A] rounded-2xl p-6 text-white space-y-5 relative overflow-hidden">
+          <motion.div
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+            className="bg-gradient-to-br from-[#0F294A] via-[#133560] to-[#0B1F3B] rounded-3xl p-6 text-white space-y-5 relative overflow-hidden shadow-[0_20px_45px_rgba(15,41,74,0.24)] border border-white/15"
+          >
             <CreditCard className="absolute -top-4 -right-4 w-28 h-28 opacity-10" />
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-blue-200">To'lov kartasi</span>
@@ -658,9 +697,9 @@ export const PaymentView: React.FC<{
                 <span>Nusxalash</span>
               </button>
             </div>
-          </div>
+          </motion.div>
 
-          <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+          <div className="yuyu-glass-strong p-6 rounded-3xl space-y-5">
             <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
               To'lov hisob-kitobi
             </h2>
@@ -737,14 +776,16 @@ export const PaymentView: React.FC<{
               )}
             </div>
 
-            <button
+            <motion.button
               type="button"
+              whileHover={{ y: -2, scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
               onClick={handleConfirm}
-              className="w-full py-3.5 px-6 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-semibold rounded-xl flex items-center justify-center gap-2 text-sm transition-colors"
+              className="w-full py-3.5 px-6 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-semibold rounded-xl flex items-center justify-center gap-2 text-sm transition-colors shadow-lg shadow-blue-950/15"
             >
               <ShieldCheck size={18} />
               <span>{t.confirmPayment}</span>
-            </button>
+            </motion.button>
           </div>
         </aside>
       </div>
@@ -761,24 +802,26 @@ export const ReceiptView: React.FC<{
   if (!order) return null;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <GlassReveal className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <button
+        <motion.button
           type="button"
+          whileHover={{ x: -2 }}
+          whileTap={{ scale: 0.94 }}
           onClick={() => {
             playSound();
             onBack();
           }}
-          className="p-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl"
+          className="p-2.5 yuyu-glass-subtle rounded-xl"
         >
           <ChevronLeft size={18} />
-        </button>
+        </motion.button>
         <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-white">
           YUYU Shop · Buyurtma cheki
         </h1>
       </div>
 
-      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-8 space-y-8">
+      <div className="yuyu-glass-strong rounded-3xl p-8 space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
@@ -856,126 +899,287 @@ export const ReceiptView: React.FC<{
             playSound();
             onBack();
           }}
-          className="w-full py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-white rounded-xl font-semibold text-sm transition-colors"
+          className="w-full py-3 yuyu-glass-subtle hover:bg-white/90 dark:hover:bg-slate-800 text-slate-800 dark:text-white rounded-xl font-semibold text-sm transition-colors"
         >
           Buyurtmalarim sahifasiga o'tish
         </button>
       </div>
-    </div>
+    </GlassReveal>
   );
 };
 
 export const OrdersView: React.FC<{
   t: any;
   orders: Order[];
+  products?: Product[];
+  currentUser?: User | null;
   onNavigate: (view: View) => void;
   setReceiptOrder: (o: Order) => void;
-}> = ({ t, orders, onNavigate, setReceiptOrder }) => (
-  <div className="space-y-8">
-    <div className="pb-6 border-b border-slate-200 dark:border-slate-800 space-y-1">
-      <h1 className="font-display text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-        Buyurtmalarim
-      </h1>
-      <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
-        Jami {orders.length} ta buyurtma tarixi
-      </p>
-    </div>
+  notify?: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  safeFetchJSON?: (url: string, options?: RequestInit) => Promise<any>;
+}> = ({
+  t,
+  orders,
+  products = [],
+  currentUser,
+  onNavigate,
+  setReceiptOrder,
+  notify,
+  safeFetchJSON
+}) => {
+  const [myResales, setMyResales] = useState<ResaleListing[]>([]);
+  const [resaleModalOrder, setResaleModalOrder] = useState<Order | null>(null);
 
-    {orders.length === 0 ? (
-      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 py-20 text-center space-y-4">
-        <Package size={40} strokeWidth={1.3} className="mx-auto text-slate-300 dark:text-slate-600" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">Hali buyurtmalar mavjud emas.</p>
+  useEffect(() => {
+    const uid = currentUser?.telegramId || currentUser?.phoneNumber;
+    if (!uid || !safeFetchJSON) return;
+    let active = true;
+    safeFetchJSON(`/api/resale/user/${encodeURIComponent(uid)}`)
+      .then((res) => {
+        if (active && res?.success && Array.isArray(res.listings)) {
+          setMyResales(res.listings);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.telegramId, currentUser?.phoneNumber]);
+
+  const resaleByOrderId = React.useMemo(() => {
+    const map = new Map<string, ResaleListing>();
+    for (const item of myResales) {
+      const existing = map.get(item.originalOrderId);
+      // Prefer non-rejected or latest listing
+      if (!existing || (existing.status === 'rejected' && item.status !== 'rejected')) {
+        map.set(item.originalOrderId, item);
+      }
+    }
+    return map;
+  }, [myResales]);
+
+  return (
+    <div className="space-y-8">
+      <div className="pb-6 border-b border-slate-200/70 dark:border-slate-800/70 flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="font-display text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+            Buyurtmalarim
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+            Jami {orders.length} ta buyurtma tarixi
+          </p>
+        </div>
         <button
           type="button"
-          onClick={() => onNavigate('catalog')}
-          className="px-5 py-2.5 rounded-xl bg-[#0F294A] dark:bg-blue-600 text-white text-sm font-semibold"
+          onClick={() => onNavigate('tayyor_bozor')}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl yuyu-glass-subtle text-xs font-semibold text-[#0F294A] dark:text-blue-400 hover:bg-white/90 dark:hover:bg-slate-800 transition-colors"
         >
-          Katalogni ko'rish
+          <Zap size={14} className="text-amber-500" />
+          <span>⚡ Tayyor Bozor vitrinasi</span>
         </button>
       </div>
-    ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {orders.map((o) => {
-          const isDone = o.status === 'delivered' || o.status === 'paid';
-          return (
-            <div
-              key={o.id}
-              className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4"
+
+      {orders.length === 0 ? (
+        <GlassReveal>
+          <div className="yuyu-glass rounded-3xl py-20 text-center space-y-4">
+            <Package size={40} strokeWidth={1.3} className="mx-auto text-slate-300 dark:text-slate-600" />
+            <p className="text-sm text-slate-500 dark:text-slate-400">Hali buyurtmalar mavjud emas.</p>
+            <motion.button
+              type="button"
+              whileHover={{ y: -2, scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => onNavigate('catalog')}
+              className="px-5 py-2.5 rounded-xl bg-[#0F294A] dark:bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-950/15"
             >
-              <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-500">
-                  <span className="font-semibold text-slate-900 dark:text-white">{o.id}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{o.date}</span>
-                </div>
-                <span
-                  className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
-                    isDone
-                      ? 'text-emerald-700 dark:text-emerald-400'
-                      : 'text-amber-700 dark:text-amber-400'
-                  }`}
-                >
-                  {isDone ? <CheckCircle2 size={14} /> : <Clock size={14} />}
-                  <span>{t[o.status] || o.status}</span>
-                </span>
-              </div>
+              Katalogni ko'rish
+            </motion.button>
+          </div>
+        </GlassReveal>
+      ) : (
+        <StaggerGrid className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {orders.map((o) => {
+            const isDone = o.status === 'delivered' || o.status === 'paid';
+            const isCancelled = o.status === 'cancelled';
+            const resale = resaleByOrderId.get(o.id);
+            const canListResale =
+              o.status === 'delivered' &&
+              Boolean(currentUser && safeFetchJSON && notify) &&
+              (!resale || resale.status === 'rejected');
 
-              <div className="flex items-start gap-4">
-                {o.receiptImage && (
-                  <img
-                    src={o.receiptImage}
-                    alt="Chek"
-                    className="w-16 h-16 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0 space-y-1">
-                  <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
-                    {o.productName}
-                  </h3>
-                  <p className="text-xs text-slate-500">Variant: {o.size}</p>
-                  <p className="font-mono tabular-nums text-lg font-bold text-[#0F294A] dark:text-blue-400 pt-1">
-                    {o.price.toLocaleString()} so'm
-                  </p>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {Boolean(o.cashbackUsed && o.cashbackUsed > 0) && (
-                      <span className="text-[11px] font-mono text-amber-600 dark:text-amber-400">
-                        Keshbek ishlatildi: -{(o.cashbackUsed || 0).toLocaleString()} so'm
+            return (
+              <StaggerItem key={o.id}>
+                <motion.div
+                  whileHover={{ y: -3 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+                  className="yuyu-glass p-6 rounded-3xl space-y-4 h-full flex flex-col justify-between"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200/60 dark:border-slate-800/70">
+                      <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-500">
+                        <span className="font-semibold text-slate-900 dark:text-white">{o.id}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{o.date}</span>
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                          isCancelled
+                            ? 'text-red-600 dark:text-red-400'
+                            : isDone
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-amber-700 dark:text-amber-400'
+                        }`}
+                      >
+                        {isCancelled ? (
+                          <XCircle size={14} />
+                        ) : isDone ? (
+                          <CheckCircle2 size={14} />
+                        ) : (
+                          <Clock size={14} />
+                        )}
+                        <span>{t[o.status] || o.status}</span>
                       </span>
+                    </div>
+
+                    <div className="flex items-start gap-4">
+                      {o.receiptImage && (
+                        <img
+                          src={o.receiptImage}
+                          alt="Chek"
+                          className="w-16 h-16 rounded-xl object-cover border border-white/70 dark:border-slate-700 shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
+                          {o.productName}
+                        </h3>
+                        <p className="text-xs text-slate-500">Variant: {o.size}</p>
+                        <p className="font-mono tabular-nums text-lg font-bold text-[#0F294A] dark:text-blue-400 pt-1">
+                          {o.price.toLocaleString()} so'm
+                        </p>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {Boolean(o.cashbackUsed && o.cashbackUsed > 0) && (
+                            <span className="text-[11px] font-mono text-amber-600 dark:text-amber-400">
+                              Keshbek ishlatildi: -{(o.cashbackUsed || 0).toLocaleString()} so'm
+                            </span>
+                          )}
+                          {Boolean(o.cashbackEarned && o.cashbackEarned > 0) && (
+                            <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400">
+                              VIP keshbek: +{(o.cashbackEarned || 0).toLocaleString()} so'm
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tayyor Bozor Resale Status / 1-Click CTA on Delivered Orders */}
+                    {resale && resale.status !== 'rejected' && (
+                      <div
+                        className={`p-3.5 rounded-2xl border text-xs space-y-1 ${
+                          resale.status === 'sold'
+                            ? 'bg-emerald-50/90 dark:bg-emerald-950/35 border-emerald-300/70 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300'
+                            : resale.status === 'reserved'
+                            ? 'bg-purple-50/90 dark:bg-purple-950/35 border-purple-300/70 dark:border-purple-700/60 text-purple-800 dark:text-purple-300'
+                            : resale.status === 'active'
+                            ? 'bg-blue-50/90 dark:bg-blue-950/35 border-blue-300/70 dark:border-blue-700/60 text-blue-800 dark:text-blue-300'
+                            : 'bg-amber-50/90 dark:bg-amber-950/35 border-amber-300/70 dark:border-amber-700/60 text-amber-800 dark:text-amber-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 font-semibold">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Zap size={13} />
+                            <span>
+                              {resale.status === 'sold'
+                                ? 'Sotildi — pulingiz o‘tkazildi'
+                                : resale.status === 'reserved'
+                                ? 'Tayyor Bozorda band qilindi'
+                                : resale.status === 'active'
+                                ? 'Tayyor Bozorda sotuvda'
+                                : 'Tayyor Bozor: Moderatsiyada'}
+                            </span>
+                          </span>
+                          <span className="font-mono tabular-nums">
+                            {resale.resalePrice.toLocaleString()} so‘m
+                          </span>
+                        </div>
+                        {resale.status === 'active' && (
+                          <button
+                            type="button"
+                            onClick={() => onNavigate('tayyor_bozor')}
+                            className="text-[11px] underline font-semibold"
+                          >
+                            Tayyor Bozorda ko‘rish
+                          </button>
+                        )}
+                      </div>
                     )}
-                    {Boolean(o.cashbackEarned && o.cashbackEarned > 0) && (
-                      <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400">
-                        VIP keshbek: +{(o.cashbackEarned || 0).toLocaleString()} so'm
-                      </span>
+
+                    {resale && resale.status === 'rejected' && (
+                      <div className="p-3 rounded-2xl bg-red-50/80 dark:bg-red-950/30 border border-red-200/70 dark:border-red-900/50 text-xs text-red-700 dark:text-red-300">
+                        Oldingi Tayyor Bozor e’loni rad etildi
+                        {resale.adminNote ? `: ${resale.adminNote}` : ''}. Qayta joylashingiz mumkin.
+                      </div>
+                    )}
+
+                    {canListResale && (
+                      <motion.button
+                        type="button"
+                        whileHover={{ y: -1, scale: 1.01 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setResaleModalOrder(o)}
+                        className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-[#0F294A] via-[#2563EB] to-blue-600 hover:from-[#163A66] hover:to-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 transition-all"
+                      >
+                        <Zap size={15} className="text-amber-300 shrink-0" />
+                        <span>Razmeri to‘g‘ri kelmadimi? — 1 bosishda sotuvga qo‘y</span>
+                      </motion.button>
                     )}
                   </div>
-                </div>
-              </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                {o.trackNumber ? (
-                  <div className="text-xs font-mono text-slate-600 dark:text-slate-300">
-                    Trek: <span className="font-semibold text-[#0F294A] dark:text-blue-400">{o.trackNumber}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200/60 dark:border-slate-800/70">
+                    {o.trackNumber ? (
+                      <div className="text-xs font-mono text-slate-600 dark:text-slate-300">
+                        Trek: <span className="font-semibold text-[#0F294A] dark:text-blue-400">{o.trackNumber}</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400">Trek raqami kutilmoqda</span>
+                    )}
+
+                    <motion.button
+                      type="button"
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.96 }}
+                      onClick={() => {
+                        setReceiptOrder(o);
+                        onNavigate('receipt');
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Receipt size={14} />
+                      <span>{t.viewReceipt}</span>
+                    </motion.button>
                   </div>
-                ) : (
-                  <span className="text-xs text-slate-400">Trek raqami kutilmoqda</span>
-                )}
+                </motion.div>
+              </StaggerItem>
+            );
+          })}
+        </StaggerGrid>
+      )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReceiptOrder(o);
-                    onNavigate('receipt');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <Receipt size={14} />
-                  <span>{t.viewReceipt}</span>
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    )}
-  </div>
-);
+      {/* 1-Click Resale Modal */}
+      <AnimatePresence>
+        {resaleModalOrder && currentUser && safeFetchJSON && notify && (
+          <ResaleListingModal
+            order={resaleModalOrder}
+            product={products.find((p) => p.id === resaleModalOrder.productId) || null}
+            currentUser={currentUser}
+            onClose={() => setResaleModalOrder(null)}
+            onCreated={(createdListing) => {
+              setMyResales((prev) => [createdListing, ...prev]);
+            }}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};

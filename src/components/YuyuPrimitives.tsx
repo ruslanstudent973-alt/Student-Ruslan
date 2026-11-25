@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Home, Grid, PlayCircle, ShoppingCart, User as UserIcon, Package, Sun, Moon, ArrowUpRight, Star, Volume2, VolumeX, Crown, Lock
+  Home, Grid, PlayCircle, ShoppingCart, User as UserIcon, Package, Sun, Moon, ArrowUpRight, Star, Volume2, VolumeX, Crown, Lock, Zap
 } from 'lucide-react';
 import { Product, View, User } from '../types';
 import { MARKUP_RATE, CURRENCY_RATE } from '../constants';
 import { getEffectiveVipStatus } from '../utils/vip';
 import { useAdminAccess } from './AdminOnlyGuard';
+import { Tilt3DGlassCard } from './GlassMotionPrimitives';
 
-export const YUYU_AUTH_IMAGE = '/src/assets/images/yuyu_auth_showcase_1795089980088.jpg';
-export const YUYU_HERO_IMAGE = '/src/assets/images/yuyu_hero_storefront_1795089979705.jpg';
+export const YUYU_AUTH_IMAGE = '/images/yuyu_auth_showcase_1795089980088.jpg';
+export const YUYU_HERO_IMAGE = '/images/yuyu_hero_storefront_1795089979705.jpg';
 
 export const YuyuMonogram: React.FC<{ size?: number; inverted?: boolean }> = ({
   size = 34,
@@ -30,12 +32,21 @@ export const YuyuMonogram: React.FC<{ size?: number; inverted?: boolean }> = ({
       fill={inverted ? '#FFFFFF' : '#0F294A'}
     />
     <path
-      d="M9.5 12.5L14.5 20.5V27.5H17.5V20.5L22.5 12.5H19.1L16 17.8L12.9 12.5H9.5Z"
-      fill={inverted ? '#0F294A' : '#FFFFFF'}
+      d="M11 17H29L27 27H13L11 17Z"
+      stroke={inverted ? '#0F294A' : '#FFFFFF'}
+      strokeWidth="2"
+      strokeLinejoin="round"
+      fill={inverted ? '#F1F5F9' : '#1E3A8A'}
     />
     <path
-      d="M19.5 12.5L24.5 20.5V27.5H27.5V20.5L32.5 12.5H29.1L26 17.8L22.9 12.5H19.5Z"
-      fill={inverted ? '#1D4ED8' : '#93C5FD'}
+      d="M15 17V13C15 11.3431 16.3431 10 18 10H22C23.5685 10 24.8973 11.1643 24.9947 12.7317L25 17"
+      stroke={inverted ? '#1D4ED8' : '#93C5FD'}
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+    <path
+      d="M28 10L29.2 12.8L32 14L29.2 15.2L28 18L26.8 15.2L24 14L26.8 12.8L28 10Z"
+      fill="#FBBF24"
     />
   </svg>
 );
@@ -51,7 +62,7 @@ export const SafeImage: React.FC<{
   if (!src || errored) {
     return (
       <div
-        className={`flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 p-4 text-center ${className}`}
+        className={`flex flex-col items-center justify-center bg-slate-100/80 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 p-4 text-center ${className}`}
         role="img"
         aria-label={alt}
       >
@@ -101,14 +112,20 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   const navItems: { view: View; label: string; activeViews: View[] }[] = [
     { view: 'home', label: 'Asosiy', activeViews: ['home'] },
     { view: 'catalog', label: 'Katalog', activeViews: ['catalog', 'detail', 'search', 'find_product'] },
+    { view: 'tayyor_bozor', label: '⚡ Tayyor Bozor', activeViews: ['tayyor_bozor'] },
+    { view: 'auction', label: 'Kim oshdi', activeViews: ['auction'] },
     { view: 'videos', label: 'Videolar', activeViews: ['videos'] },
-    { view: 'orders', label: 'Buyurtmalar', activeViews: ['orders', 'receipt'] },
+    { view: 'ai_assistant', label: 'AI Maslahatchi', activeViews: ['ai_assistant'] },
     {
       view: 'profile',
       label: isAdminAuthorized ? 'Admin kabinet' : 'Kabinet',
       activeViews: [
         'profile',
+        'orders',
+        'receipt',
         'my_requests',
+        'my_auctions',
+        'affiliate_cabinet',
         'wishlist',
         'promo',
         'partnership',
@@ -125,17 +142,23 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         'admin-support',
         'admin_vip',
         'admin_custom_requests',
+        'admin_auctions',
+        'admin_seller_payouts',
+        'admin_tayyor_bozor',
+        'admin_affiliates',
         'admin_access'
       ]
     }
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
-      <div className="max-w-[1360px] mx-auto px-5 sm:px-6 lg:px-10 h-[72px] flex items-center justify-between gap-8">
+    <header className="sticky top-0 z-40 bg-white/65 dark:bg-[#0B1224]/68 backdrop-blur-2xl border-b border-white/85 dark:border-slate-700/50 shadow-[0_6px_28px_rgba(15,23,42,0.045)]">
+      <div className="max-w-[1360px] mx-auto px-5 sm:px-6 lg:px-10 h-[72px] flex items-center justify-between gap-6">
         {/* Zone 1: Brand Wordmark */}
-        <button
+        <motion.button
           type="button"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
           onClick={() => onNavigate('home')}
           className="flex items-center gap-2.5 text-left whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F294A] rounded-lg"
         >
@@ -143,17 +166,19 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
           <span className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap shrink-0">
             YUYU Shop
           </span>
-        </button>
+        </motion.button>
 
-        {/* Zone 2: Primary Navigation Links */}
-        <nav className="hidden md:flex items-center gap-7 lg:gap-8" aria-label="Asosiy navigatsiya">
+        {/* Zone 2: Primary Navigation Links with sliding layoutId underline */}
+        <nav className="hidden md:flex items-center gap-4 lg:gap-6" aria-label="Asosiy navigatsiya">
           {navItems.map((item) => {
             const isActive = item.activeViews.includes(currentView);
             const isProfileItem = item.view === 'profile';
             return (
-              <button
+              <motion.button
                 key={item.view}
                 type="button"
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.96 }}
                 onClick={() => onNavigate(item.view)}
                 className={`relative py-2 text-sm font-medium whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F294A] rounded inline-flex items-center gap-2 ${
                   isActive
@@ -181,28 +206,43 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
                 )}
                 <span>{item.label}</span>
                 {isActive && (
-                  <span className="absolute left-0 right-0 -bottom-[19px] h-[2px] bg-[#0F294A] dark:bg-blue-400" />
+                  <motion.span
+                    layoutId="yuyu-desktop-nav-underline"
+                    transition={{ type: 'spring', stiffness: 440, damping: 32 }}
+                    className="absolute left-0 right-0 -bottom-[19px] h-[2.5px] rounded-full bg-[#2563EB] dark:bg-blue-400"
+                  />
                 )}
-              </button>
+              </motion.button>
             );
           })}
         </nav>
 
-        {/* Zone 3: Single Primary Action */}
+        {/* Zone 3: Single Primary Action with spring cart counter */}
         <div className="flex items-center shrink-0">
-          <button
+          <motion.button
             type="button"
+            whileHover={{ y: -1.5, scale: 1.02 }}
+            whileTap={{ scale: 0.96 }}
             onClick={() => onNavigate('cart')}
-            className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-lg bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0F294A]"
+            className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold whitespace-nowrap shrink-0 shadow-md shadow-[#0F294A]/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0F294A]"
           >
             <ShoppingCart size={16} />
             <span>Savat</span>
-            {cartCount > 0 && (
-              <span className="font-mono tabular-nums text-xs px-1.5 py-0.5 rounded bg-white/15">
-                {cartCount}
-              </span>
-            )}
-          </button>
+            <AnimatePresence mode="popLayout">
+              {cartCount > 0 && (
+                <motion.span
+                  key={cartCount}
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+                  className="font-mono tabular-nums text-xs px-1.5 py-0.5 rounded-md bg-white/20"
+                >
+                  {cartCount}
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </motion.button>
         </div>
       </div>
     </header>
@@ -224,7 +264,7 @@ export const DesktopFooter: React.FC<DesktopFooterProps> = ({
   onToggleSound,
   onNavigate
 }) => (
-  <footer className="hidden md:block mt-20 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D1426]">
+  <footer className="hidden md:block mt-20 border-t border-white/80 dark:border-slate-800/70 bg-white/55 dark:bg-[#0B1224]/60 backdrop-blur-2xl">
     <div className="max-w-[1360px] mx-auto px-6 lg:px-10 py-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
       <div className="space-y-1.5">
         <div className="flex items-center gap-2.5">
@@ -242,37 +282,45 @@ export const DesktopFooter: React.FC<DesktopFooterProps> = ({
         <button type="button" onClick={() => onNavigate('catalog')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
           Katalog
         </button>
+        <button type="button" onClick={() => onNavigate('tayyor_bozor')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
+          ⚡ Tayyor Bozor
+        </button>
+        <button type="button" onClick={() => onNavigate('auction')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
+          Kim oshdi
+        </button>
         <button type="button" onClick={() => onNavigate('videos')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
           Videolar
         </button>
-        <button type="button" onClick={() => onNavigate('search')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
-          Qidiruv
+        <button type="button" onClick={() => onNavigate('ai_assistant')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
+          AI Maslahatchi
         </button>
         <button type="button" onClick={() => onNavigate('orders')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
           Buyurtmalar
         </button>
-        <button type="button" onClick={() => onNavigate('partnership')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
-          Hamkorlik
+        <button type="button" onClick={() => onNavigate('affiliate_cabinet')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
+          Hamkorlik (Pul ishlash)
         </button>
         <button type="button" onClick={() => onNavigate('support')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">
           Yordam
         </button>
-        <button
+        <motion.button
           type="button"
+          whileTap={{ scale: 0.95 }}
           onClick={onToggleSound}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-lg border border-white/90 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors whitespace-nowrap shadow-sm"
         >
           {soundEnabled ? <Volume2 size={14} /> : <VolumeX size={14} className="text-slate-400" />}
           <span>{soundEnabled ? 'Ovoz yoqilgan' : "Ovoz o'chirilgan"}</span>
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           type="button"
+          whileTap={{ scale: 0.95 }}
           onClick={onToggleTheme}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-lg border border-white/90 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors whitespace-nowrap shadow-sm"
         >
           {theme === 'light' ? <Moon size={14} /> : <Sun size={14} className="text-amber-400" />}
           <span>{theme === 'light' ? "Tungi rejim" : "Kunduzgi rejim"}</span>
-        </button>
+        </motion.button>
       </div>
     </div>
   </footer>
@@ -302,19 +350,26 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       : '';
 
   const items: { view: View; label: string; icon: React.ReactNode }[] = [
-    { view: 'home', label: 'Asosiy', icon: <Home size={20} /> },
-    { view: 'catalog', label: 'Katalog', icon: <Grid size={20} /> },
-    { view: 'videos', label: 'Videolar', icon: <PlayCircle size={20} /> },
+    { view: 'home', label: 'Asosiy', icon: <Home size={19} /> },
+    { view: 'catalog', label: 'Katalog', icon: <Grid size={19} /> },
+    { view: 'tayyor_bozor', label: 'Tayyor', icon: <Zap size={19} /> },
+    { view: 'videos', label: 'Videolar', icon: <PlayCircle size={19} /> },
     {
       view: 'cart',
       label: 'Savat',
       icon: (
         <div className="relative">
-          <ShoppingCart size={20} />
+          <ShoppingCart size={19} />
           {cartCount > 0 && (
-            <span className="absolute -top-1.5 -right-2 bg-[#0F294A] dark:bg-blue-500 text-white text-[10px] font-mono font-bold px-1 rounded-full min-w-[16px] text-center">
+            <motion.span
+              key={cartCount}
+              initial={{ scale: 0.5 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+              className="absolute -top-1.5 -right-2 bg-[#2563EB] text-white text-[10px] font-mono font-bold px-1 rounded-full min-w-[16px] text-center"
+            >
               {cartCount}
-            </span>
+            </motion.span>
           )}
         </div>
       )
@@ -324,7 +379,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       label: 'Kabinet',
       icon: (
         <div className={`relative ${mobileVipRing}`}>
-          <UserIcon size={19} />
+          <UserIcon size={18} />
           {vipInfo.isVip && (
             <Crown
               size={11}
@@ -344,25 +399,33 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-16 bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex items-center justify-around px-2"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-16 bg-white/75 dark:bg-[#0B1224]/80 backdrop-blur-2xl border-t border-white/90 dark:border-slate-700/60 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] flex items-center justify-around px-1"
       aria-label="Mobil navigatsiya"
     >
       {items.map((item) => {
         const active = currentView === item.view;
         return (
-          <button
+          <motion.button
             key={item.view}
             type="button"
+            whileTap={{ scale: 0.9 }}
             onClick={() => onNavigate(item.view)}
-            className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 transition-colors ${
+            className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 rounded-xl transition-colors ${
               active
-                ? 'text-[#0F294A] dark:text-blue-400 font-semibold'
-                : 'text-slate-400 dark:text-slate-500'
+                ? 'text-[#2563EB] dark:text-blue-400 font-semibold'
+                : 'text-slate-500 dark:text-slate-400'
             }`}
           >
+            {active && (
+              <motion.span
+                layoutId="yuyu-mobile-nav-bg"
+                transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                className="absolute inset-x-1 inset-y-1 rounded-xl bg-blue-500/10 dark:bg-blue-400/15 -z-10"
+              />
+            )}
             {item.icon}
-            <span className="text-[11px] leading-none">{item.label}</span>
-          </button>
+            <span className="text-[10px] leading-none">{item.label}</span>
+          </motion.button>
         );
       })}
     </nav>
@@ -388,7 +451,7 @@ export const ProductCard: React.FC<{
   const isLockedForUser = Boolean(product.isVipOnly && !vipInfo.hasVipOnlyAccess);
 
   return (
-    <article
+    <Tilt3DGlassCard
       onClick={onClick}
       role="button"
       tabIndex={0}
@@ -398,23 +461,24 @@ export const ProductCard: React.FC<{
           onClick();
         }
       }}
-      className={`group cursor-pointer bg-white dark:bg-[#111827] rounded-2xl border overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F294A] ${
+      maxTilt={6}
+      className={`group cursor-pointer yuyu-glass rounded-3xl border overflow-hidden flex flex-col transition-shadow duration-300 hover:shadow-[0_22px_50px_rgba(37,99,235,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] ${
         product.isVipOnly
-          ? 'border-amber-400/60 dark:border-amber-400/50 hover:border-amber-400'
-          : 'border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+          ? 'border-amber-400/70 dark:border-amber-400/50 hover:border-amber-400'
+          : 'border-white/90 dark:border-slate-700/60 hover:border-blue-200/90 dark:hover:border-blue-500/40'
       }`}
     >
-      {/* Image Stage: 65-75% visual focus on uniform neutral surface */}
-      <div className="aspect-[4/3] w-full bg-[#F1F5F9] dark:bg-slate-800/70 relative overflow-hidden flex items-center justify-center p-5">
+      {/* Image Stage: Frosted translucent showcase */}
+      <div className="aspect-[4/3] w-full bg-white/45 dark:bg-slate-800/50 relative overflow-hidden flex items-center justify-center p-5 border-b border-white/70 dark:border-slate-700/40">
         <SafeImage
           src={product.images?.[0]}
           alt={product.name}
           fallbackLabel={product.name}
-          className="w-full h-full object-contain transition-transform duration-300 ease-out group-hover:scale-105"
+          className="w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-110"
         />
 
         {product.isVipOnly && (
-          <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#070B14]/90 backdrop-blur-md border border-amber-400/60 text-amber-300 text-[10px] font-mono font-bold shadow-[0_0_14px_rgba(251,191,36,0.3)]">
+          <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#070B14]/85 backdrop-blur-md border border-amber-400/60 text-amber-300 text-[10px] font-mono font-bold shadow-[0_0_14px_rgba(251,191,36,0.3)]">
             {isLockedForUser ? <Lock size={11} /> : <Crown size={11} />}
             <span>Faqat VIP mijozlar uchun</span>
           </div>
@@ -436,12 +500,12 @@ export const ProductCard: React.FC<{
             </span>
           </div>
 
-          <h4 className="font-display text-base font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#0F294A] dark:group-hover:text-blue-400 transition-colors">
+          <h4 className="font-display text-base font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#2563EB] dark:group-hover:text-blue-400 transition-colors">
             {product.name}
           </h4>
         </div>
 
-        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+        <div className="pt-3 border-t border-white/70 dark:border-slate-700/50 space-y-2">
           <div className="flex items-end justify-between gap-2">
             <div className="space-y-0.5 min-w-0">
               {displayOldPrice && (
@@ -463,14 +527,14 @@ export const ProductCard: React.FC<{
 
             <span
               aria-hidden="true"
-              className="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 group-hover:bg-[#0F294A] group-hover:border-[#0F294A] group-hover:text-white dark:group-hover:bg-blue-600 dark:group-hover:border-blue-600 flex items-center justify-center transition-colors shrink-0"
+              className="w-9 h-9 rounded-xl bg-white/75 dark:bg-slate-800/80 border border-white/95 dark:border-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-[#2563EB] group-hover:border-[#2563EB] group-hover:text-white group-hover:rotate-12 flex items-center justify-center transition-all duration-300 shrink-0 shadow-sm"
             >
               {isLockedForUser ? <Lock size={14} className="text-amber-500" /> : <ArrowUpRight size={15} />}
             </span>
           </div>
 
           {hasVipPrice && product.vipPrice && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#070B14] border border-amber-400/50 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.2)] text-[11px] font-mono tabular-nums font-bold w-full justify-between">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#070B14]/90 backdrop-blur-md border border-amber-400/50 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.2)] text-[11px] font-mono tabular-nums font-bold w-full justify-between">
               <span className="inline-flex items-center gap-1">
                 <Crown size={11} className="text-amber-400 shrink-0" />
                 <span>VIP narx:</span>
@@ -480,6 +544,6 @@ export const ProductCard: React.FC<{
           )}
         </div>
       </div>
-    </article>
+    </Tilt3DGlassCard>
   );
 };

@@ -4,6 +4,7 @@ import { Product, User } from '../types';
 import { MARKUP_RATE, CURRENCY_RATE } from '../constants';
 import { SafeImage } from './YuyuPrimitives';
 import { getEffectiveVipStatus } from '../utils/vip';
+import { Tilt3DGlassCard, StaggerGrid, StaggerItem } from './GlassMotionPrimitives';
 
 interface CartRecommendationsSectionProps {
   cart: any[];
@@ -89,7 +90,7 @@ export const CartRecommendationsSection: React.FC<CartRecommendationsSectionProp
   const categorySummary = cartCategories.slice(0, 3).join(', ');
 
   return (
-    <section className="pt-10 border-t border-slate-200 dark:border-slate-800 space-y-6">
+    <section className="pt-10 border-t border-slate-200/70 dark:border-slate-800/70 space-y-6">
       <div className="space-y-1">
         <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
           Sizga mos kelishi mumkin
@@ -103,7 +104,7 @@ export const CartRecommendationsSection: React.FC<CartRecommendationsSectionProp
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <StaggerGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {recommended.map((product) => {
           const displayPrice = Math.round(product.pinduoduoPrice * MARKUP_RATE * CURRENCY_RATE);
           const displayOldPrice = product.oldPrice
@@ -114,30 +115,30 @@ export const CartRecommendationsSection: React.FC<CartRecommendationsSectionProp
           const isLocked = Boolean(product.isVipOnly && !vipInfo.hasVipOnlyAccess);
 
           return (
-            <article
-              key={product.id}
-              onClick={() => onProductClick(product)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onProductClick(product);
-                }
-              }}
-              className={`group cursor-pointer bg-white dark:bg-[#111827] rounded-2xl border overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/5 ${
-                product.isVipOnly
-                  ? 'border-amber-400/60 dark:border-amber-400/50'
-                  : 'border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-              }`}
-            >
-              <div className="aspect-[4/3] w-full bg-[#F1F5F9] dark:bg-slate-800/70 p-5 flex items-center justify-center overflow-hidden relative">
-                <SafeImage
-                  src={product.images?.[0]}
-                  alt={product.name}
-                  fallbackLabel={product.name}
-                  className="w-full h-full object-contain transition-transform duration-300 ease-out group-hover:scale-105"
-                />
+            <StaggerItem key={product.id} className="h-full">
+              <Tilt3DGlassCard
+                onClick={() => onProductClick(product)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onProductClick(product);
+                  }
+                }}
+                className={`group cursor-pointer yuyu-glass rounded-3xl overflow-hidden flex flex-col ${
+                  product.isVipOnly
+                    ? '!border-amber-400/70 dark:!border-amber-400/60'
+                    : 'hover:border-blue-300/80 dark:hover:border-blue-500/50'
+                }`}
+              >
+                <div className="aspect-[4/3] w-full bg-white/55 dark:bg-slate-800/50 p-5 flex items-center justify-center overflow-hidden relative">
+                  <SafeImage
+                    src={product.images?.[0]}
+                    alt={product.name}
+                    fallbackLabel={product.name}
+                    className="w-full h-full object-contain transition-transform duration-300 ease-out group-hover:scale-105"
+                  />
                 {product.isVipOnly && (
                   <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#070B14]/90 border border-amber-400/60 text-amber-300 text-[10px] font-mono font-bold">
                     {isLocked ? <Lock size={10} /> : <Crown size={10} />}
@@ -212,10 +213,11 @@ export const CartRecommendationsSection: React.FC<CartRecommendationsSectionProp
                   )}
                 </div>
               </div>
-            </article>
+              </Tilt3DGlassCard>
+            </StaggerItem>
           );
         })}
-      </div>
+      </StaggerGrid>
     </section>
   );
 };

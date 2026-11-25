@@ -29,13 +29,22 @@ import {
 import { CustomRequest, CustomRequestStatus, Product, User } from '../types';
 import { MARKUP_RATE, CURRENCY_RATE } from '../constants';
 import { SafeImage } from './YuyuPrimitives';
-import { compressImageFile } from '../utils/mediaCompress';
+import { uploadMediaSmart } from '../utils/r2MediaUpload';
+
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 /**
- * Client-side image validation & compression (Vercel-safe adaptive Canvas compression)
+ * Client-side image validation & compression (Canvas resize to max 1280px, JPEG/WebP quality 0.82)
  */
-export const validateAndCompressImage = (file: File): Promise<string> => {
-  return compressImageFile(file, 'product');
+export const validateAndCompressImage = async (file: File): Promise<string> => {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    throw new Error("Faqat JPG, PNG yoki WEBP formatidagi rasmlarni yuklash mumkin.");
+  }
+  if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    throw new Error("Rasm hajmi 5 MB dan oshmasligi kerak.");
+  }
+  return uploadMediaSmart(file, { folder: 'requests', maxDim: 1280, quality: 0.82 });
 };
 
 export const customRequestToProduct = (req: CustomRequest): Product => {
@@ -376,7 +385,7 @@ export const FindProductView: React.FC<{
           <button
             type="button"
             onClick={onBack}
-            className="p-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="p-2.5 yuyu-glass-subtle rounded-xl hover:bg-white/85 dark:hover:bg-slate-800/80 transition-colors"
           >
             <ChevronLeft size={18} />
           </button>
@@ -393,7 +402,7 @@ export const FindProductView: React.FC<{
         <button
           type="button"
           onClick={onOpenMyRequests}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl yuyu-glass-subtle text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/85 dark:hover:bg-slate-800/80 transition-colors"
         >
           <Clock size={15} />
           <span>Mening so'rovlarim</span>
@@ -705,7 +714,7 @@ export const MyCustomRequestsView: React.FC<{
           <button
             type="button"
             onClick={onBack}
-            className="p-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="p-2.5 yuyu-glass-subtle rounded-xl hover:bg-white/85 dark:hover:bg-slate-800/80 transition-colors"
           >
             <ChevronLeft size={18} />
           </button>
@@ -1046,7 +1055,7 @@ export const AdminCustomRequestsView: React.FC<{
           <button
             type="button"
             onClick={onBack}
-            className="p-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="p-2.5 yuyu-glass-subtle rounded-xl hover:bg-white/85 dark:hover:bg-slate-800/80 transition-colors"
           >
             <ChevronLeft size={18} />
           </button>
@@ -1080,7 +1089,7 @@ export const AdminCustomRequestsView: React.FC<{
               className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 inline-flex items-center gap-2 border transition-colors ${
                 active
                   ? 'bg-[#070B14] dark:bg-cyan-500/20 text-white dark:text-cyan-200 border-cyan-400/50 shadow-sm'
-                  : 'bg-white dark:bg-[#111827] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                  : 'yuyu-glass-subtle text-slate-600 dark:text-slate-400 hover:border-slate-300'
               }`}
             >
               <span>{tab.label}</span>

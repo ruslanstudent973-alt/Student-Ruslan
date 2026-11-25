@@ -33,8 +33,8 @@ import { Product, ProductVideo, User } from '../types';
 import { MARKUP_RATE, CURRENCY_RATE } from '../constants';
 import { SafeImage } from './YuyuPrimitives';
 import { getEffectiveVipStatus, getEffectiveProductPriceUzs } from '../utils/vip';
-import { readVideoFileForVercel, assertVercelPayloadSafe } from '../utils/mediaCompress';
 import { useAdminAccess } from './AdminOnlyGuard';
+import { uploadMediaSmart } from '../utils/r2MediaUpload';
 
 interface VideoReelsViewProps {
   videos: ProductVideo[];
@@ -386,13 +386,29 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      notify("Iltimos, faqat video fayl (.mp4, .webm) tanlang", 'error');
+      return;
+    }
+    const maxBytes = 25 * 1024 * 1024; // 25 MB limit (uses R2 presign when configured)
+    if (file.size > maxBytes) {
+      notify("Video hajmi 25 MB dan oshmasligi kerak", 'error');
+      return;
+    }
+    setUploadFileName(file.name);
+    notify("Video yuklanmoqda...", 'info');
     try {
-      const dataUrl = await readVideoFileForVercel(file);
-      setUploadFileName(file.name);
-      setUploadVideoUrl(dataUrl);
+      const uploadedUrl = await uploadMediaSmart(file, { folder: 'videos' });
+      if (uploadedUrl.startsWith('data:') && file.size > 10 * 1024 * 1024) {
+        notify("Cloudflare R2 ulanmagan holatda video hajmi 10 MB dan oshmasligi kerak", 'error');
+        setUploadFileName('');
+        return;
+      }
+      setUploadVideoUrl(uploadedUrl);
+      notify("Video muvaffaqiyatli tayyorlandi", 'success');
     } catch (err: any) {
-      e.target.value = '';
-      notify(err?.message || "Video faylni o'qishda xatolik", 'error');
+      notify(err?.message || "Videoni yuklashda xatolik", 'error');
+      setUploadFileName('');
     }
   };
 
@@ -413,20 +429,18 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
     setUploading(true);
     try {
       const linkedProduct = productMap.get(uploadProductId);
-      const payload = {
-        productId: uploadProductId,
-        caption: uploadCaption.trim(),
-        videoUrl: uploadVideoUrl.trim(),
-        posterImage: linkedProduct?.images?.[0] || '',
-        uploaderId: currentUser.telegramId,
-        uploaderName: currentUser.username,
-        uploaderRole: 'admin'
-      };
-      assertVercelPayloadSafe(payload);
       const res = await safeFetchJSON('/api/videos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          productId: uploadProductId,
+          caption: uploadCaption.trim(),
+          videoUrl: uploadVideoUrl.trim(),
+          posterImage: linkedProduct?.images?.[0] || '',
+          uploaderId: currentUser.telegramId,
+          uploaderName: currentUser.username,
+          uploaderRole: 'admin'
+        })
       });
       if (res?.video) {
         onVideosChange((prev) => [res.video, ...prev]);
@@ -496,7 +510,7 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
                 setActiveIndex(0);
               }}
               aria-label="Video toifasi"
-              className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-[#0F294A]"
+              className="yuyu-glass-input rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-[#0F294A]"
             >
               {categories.map((cat) => (
                 <option key={cat} value={cat}>
@@ -520,7 +534,7 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
       </div>
 
       {filteredVideos.length === 0 || !activeReel || !activeProduct ? (
-        <div className="py-24 px-6 text-center bg-white dark:bg-[#111827] rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div className="py-24 px-6 text-center yuyu-glass rounded-3xl space-y-4">
           <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center">
             <Film size={30} />
           </div>
@@ -1214,7 +1228,7 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
           </div>
 
           {/* Right Column: Desktop Video Queue & Upload Card */}
-          <aside className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200 dark:border-slate-800 p-5 lg:h-[760px] flex flex-col gap-4">
+          <aside className="yuyu-glass rounded-3xl p-5 lg:h-[760px] flex flex-col gap-4">
             <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h2 className="font-display text-base font-bold text-slate-900 dark:text-white">
@@ -1317,7 +1331,7 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
           aria-modal="true"
           aria-label="Yangi mahsulot videosini qo'shish"
         >
-          <div className="w-full max-w-lg bg-white dark:bg-[#111827] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+          <div className="w-full max-w-lg yuyu-glass-strong rounded-3xl overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div className="space-y-0.5">
                 <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
@@ -1399,7 +1413,7 @@ export const VideoReelsView: React.FC<VideoReelsViewProps> = ({
                   <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-[#0F294A] dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-900/60 cursor-pointer transition-colors text-center">
                     <Upload size={22} className="text-slate-400" />
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      {uploadFileName ? uploadFileName : 'MP4 yoki WebM video tanlang (2.8 MB gacha)'}
+                      {uploadFileName ? uploadFileName : 'MP4 yoki WebM video tanlang (10 MB gacha)'}
                     </span>
                     <input
                       type="file"
