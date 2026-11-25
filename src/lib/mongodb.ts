@@ -1,26 +1,51 @@
+import dotenv from "dotenv";
 import { MongoClient, type Db, type MongoClientOptions } from "mongodb";
+import mongoose from "mongoose";
 
 const DEFAULT_DB_NAME = "saytim";
+
+let envChecked = false;
+function ensureMongoEnvLoaded() {
+  if (envChecked) return;
+  envChecked = true;
+  const current = (process.env.MONGODB_URI || "").trim();
+  if (!/^mongodb(\+srv)?:\/\//.test(current)) {
+    dotenv.config({ override: true });
+  }
+}
 
 interface MongoGlobalCache {
   client: MongoClient | null;
   promise: Promise<MongoClient> | null;
 }
 
+interface MongooseGlobalCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var __yuyuMongoCache: MongoGlobalCache | undefined;
+  // eslint-disable-next-line no-var
+  var __yuyuMongooseCache: MongooseGlobalCache | undefined;
 }
 
 const globalCache: MongoGlobalCache =
   globalThis.__yuyuMongoCache ??
   (globalThis.__yuyuMongoCache = { client: null, promise: null });
 
+const mongooseCache: MongooseGlobalCache =
+  globalThis.__yuyuMongooseCache ??
+  (globalThis.__yuyuMongooseCache = { conn: null, promise: null });
+
 export function getMongoUri(): string {
+  ensureMongoEnvLoaded();
   return (process.env.MONGODB_URI || "").trim();
 }
 
 export function getMongoDbName(): string {
+  ensureMongoEnvLoaded();
   return (process.env.MONGODB_DB || DEFAULT_DB_NAME).trim() || DEFAULT_DB_NAME;
 }
 
@@ -30,7 +55,47 @@ export function isMongoConfigured(): boolean {
 }
 
 /**
- * Returns a cached MongoClient singleton safe for Next.js dev HMR
+ * Connects to MongoDB using Mongoose with global caching for
+ * Next.js App Router and Vercel Serverless Functions.
+ */
+export async function connectToDatabase(): Promise<typeof mongoose> {
+  const uri = getMongoUri();
+  if (!isMongoConfigured()) {
+    throw new Error(
+      "MONGODB_URI muhit o'zgaruvchisi sozlanmagan. Vercel Environment Variables yoki .env faylga qo'shing."
+    );
+  }
+
+  if (mongooseCache.conn && mongoose.connection.readyState === 1) {
+    return mongooseCache.conn;
+  }
+
+  if (!mongooseCache.promise) {
+    mongooseCache.promise = mongoose
+      .connect(uri, {
+        dbName: getMongoDbName(),
+        bufferCommands: false,
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 8000,
+        socketTimeoutMS: 45000,
+      })
+      .then((instance) => {
+        mongooseCache.conn = instance;
+        return instance;
+      })
+      .catch((err) => {
+        mongooseCache.promise = null;
+        mongooseCache.conn = null;
+        throw err;
+      });
+  }
+
+  mongooseCache.conn = await mongooseCache.promise;
+  return mongooseCache.conn;
+}
+
+/**
+ * Returns a cached native MongoClient singleton safe for Next.js dev HMR
  * and Vercel Serverless Function warm container reuse.
  */
 export async function getMongoClient(): Promise<MongoClient> {
@@ -118,3 +183,5 @@ export async function checkMongoHealth(): Promise<{
     };
   }
 }
+
+export default connectToDatabase;

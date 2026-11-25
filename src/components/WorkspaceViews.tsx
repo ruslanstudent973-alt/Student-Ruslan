@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ChevronLeft, LogOut, Camera, Edit3, Save, Heart, Ticket, Package, Users,
   MessageCircle, PlusCircle, Grid, ClipboardList, Image as ImageIcon, Handshake,
@@ -23,10 +23,11 @@ import {
   formatFullUzPhone,
   toNormalizedUzPhone,
   getUzOperatorName,
-  writeRecentClient
+  writeRecentClient,
+  readStoredAdminDeviceToken
 } from '../utils/authHelpers';
 import { StaggerGrid, StaggerItem, GlassReveal } from './GlassMotionPrimitives';
-import { uploadMediaSmart } from '../utils/r2MediaUpload';
+import { uploadMediaSmart, readFileAsDataUrl } from '../utils/r2MediaUpload';
 
 const PageHeader: React.FC<{
   title: string;
@@ -1300,15 +1301,86 @@ export const AdminAddProductView: React.FC<{
     flashSaleHours: '24',
     weight: productToEdit?.weight?.toString() || '0.5'
   });
-  const [images, setImages] = useState<string[]>(productToEdit?.images || []);
-  const [videos, setVideos] = useState<string[]>(productToEdit?.videos || []);
+  type MediaDraftItem = {
+    previewUrl: string;
+    url?: string;
+    file?: File;
+    isBlobPreview?: boolean;
+  };
+
+  const [imageItems, setImageItems] = useState<MediaDraftItem[]>(() =>
+    (productToEdit?.images || []).map((url) => ({ previewUrl: url, url }))
+  );
+  const [videoItems, setVideoItems] = useState<MediaDraftItem[]>(() =>
+    (productToEdit?.videos || []).map((url) => ({ previewUrl: url, url }))
+  );
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [savingStatus, setSavingStatus] = useState<'' | 'uploading' | 'saving'>('');
+
+  useEffect(() => {
+    return () => {
+      imageItems.forEach((item) => {
+        if (item.isBlobPreview) URL.revokeObjectURL(item.previewUrl);
+      });
+      videoItems.forEach((item) => {
+        if (item.isBlobPreview) URL.revokeObjectURL(item.previewUrl);
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const uploadSingleFileToApi = async (file: File, type: 'img' | 'vid'): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    const adminToken = readStoredAdminDeviceToken();
+    if (adminToken) {
+      headers['x-admin-device-token'] = adminToken;
+    }
+
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && typeof data?.url === 'string' && data.url.trim()) {
+      return data.url.trim();
+    }
+
+    // If R2 env vars are not yet set in local preview, gracefully fall back to compressed Data URL
+    if (res.status === 503) {
+      return uploadMediaSmart(file, {
+        folder: type === 'img' ? 'products' : 'videos',
+        maxDim: 1400,
+        quality: 0.84
+      });
+    }
+
+    throw new Error(data?.error || "Faylni /api/upload orqali yuklashda xatolik yuz berdi");
+  };
 
   const handleGenerateAiCopy = async () => {
     playSound();
-    const firstDataImage = images.find((img) => typeof img === 'string' && img.startsWith('data:image/'));
+    let firstDataImage = imageItems.find(
+      (item) => typeof item.url === 'string' && item.url.startsWith('data:image/')
+    )?.url;
+
+    if (!firstDataImage) {
+      const pendingImgFile = imageItems.find((item) => item.file)?.file;
+      if (pendingImgFile) {
+        try {
+          firstDataImage = await readFileAsDataUrl(pendingImgFile);
+        } catch {
+          firstDataImage = undefined;
+        }
+      }
+    }
+
     if (!form.name.trim() && !firstDataImage) {
-      notify("Avval mahsulot nomini kiriting yoki rasm yuklang", 'error');
+      notify("Avval mahsulot nomini kiriting yoki rasm tanlang", 'error');
       return;
     }
     setAiGenerating(true);
@@ -1346,79 +1418,130 @@ export const AdminAddProductView: React.FC<{
     }
   };
 
-  const handleMedia = async (e: React.ChangeEvent<HTMLInputElement>, type: 'img' | 'vid') => {
+  const handleMedia = (e: React.ChangeEvent<HTMLInputElement>, type: 'img' | 'vid') => {
     playSound();
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    notify(`${files.length} ta fayl yuklanmoqda...`, 'info');
-    try {
-      const uploadedUrls = await Promise.all(
-        files.map((file) =>
-          uploadMediaSmart(file, {
-            folder: type === 'img' ? 'products' : 'videos',
-            maxDim: 1400,
-            quality: 0.84
-          })
-        )
-      );
-      if (type === 'img') setImages((prev) => [...prev, ...uploadedUrls]);
-      else setVideos((prev) => [...prev, ...uploadedUrls]);
-      notify("Fayllar muvaffaqiyatli yuklandi", 'success');
-    } catch (err: any) {
-      notify(err?.message || "Fayllarni yuklashda xatolik", 'error');
+
+    const newDrafts: MediaDraftItem[] = files.map((file) => ({
+      previewUrl: URL.createObjectURL(file),
+      file,
+      isBlobPreview: true
+    }));
+
+    if (type === 'img') {
+      setImageItems((prev) => [...prev, ...newDrafts]);
+    } else {
+      setVideoItems((prev) => [...prev, ...newDrafts]);
     }
+    e.target.value = '';
   };
 
   const removeMedia = (idx: number, type: 'img' | 'vid') => {
     playSound();
-    if (type === 'img') setImages(images.filter((_, i) => i !== idx));
-    else setVideos(videos.filter((_, i) => i !== idx));
+    if (type === 'img') {
+      setImageItems((prev) => {
+        const target = prev[idx];
+        if (target?.isBlobPreview) URL.revokeObjectURL(target.previewUrl);
+        return prev.filter((_, i) => i !== idx);
+      });
+    } else {
+      setVideoItems((prev) => {
+        const target = prev[idx];
+        if (target?.isBlobPreview) URL.revokeObjectURL(target.previewUrl);
+        return prev.filter((_, i) => i !== idx);
+      });
+    }
   };
 
   const handleSave = async () => {
+    if (savingStatus) return;
     playSound();
-    if (!form.name || !form.price || images.length === 0) {
+    if (!form.name.trim() || !form.price || imageItems.length === 0) {
       notify("Iltimos, nomi, narxi va kamida bitta rasm kiriting", 'error');
       return;
     }
-    const newProduct: Product = {
-      id: productToEdit?.id || Date.now().toString(),
-      name: form.name,
-      pinduoduoPrice: parseFloat(form.price),
-      oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : undefined,
-      vipPrice: form.vipPrice ? Math.round(parseFloat(form.vipPrice)) : undefined,
-      isVipOnly: form.isVipOnly,
-      description: form.desc || `${form.name} — YUYU Shop sifatli mahsuloti.`,
-      category: form.category || 'Boshqa',
-      images,
-      videos: videos.length > 0 ? videos : undefined,
-      sizes: form.sizes.split(',').map((s) => s.trim()).filter(Boolean) || ['Standard'],
-      rating: productToEdit?.rating || 5,
-      salesCount: productToEdit?.salesCount || 0,
-      seller: productToEdit?.seller || {
-        name: 'YUYU Shop',
-        avatar: '',
-        rating: 5,
-        description: "Rasmiy do'kon"
-      },
-      isOriginal: form.isOriginal,
-      isCheapPrice: form.isCheapPrice,
-      isFlashSale: form.isFlashSale,
-      flashSaleEnd: form.isFlashSale
-        ? Date.now() + parseInt(form.flashSaleHours || '24', 10) * 3600000
-        : undefined,
-      weight: parseFloat(form.weight) || 0.5
-    };
+
+    const parsedPrice = parseFloat(form.price);
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      notify("Mahsulot narxi to'g'ri musbat son bo'lishi kerak", 'error');
+      return;
+    }
 
     try {
-      await safeFetchJSON('/api/products', {
+      const hasPendingUploads =
+        imageItems.some((item) => item.file && !item.url) ||
+        videoItems.some((item) => item.file && !item.url);
+
+      if (hasPendingUploads) {
+        setSavingStatus('uploading');
+        notify("Rasm va videolar /api/upload orqali Cloudflare R2 ga yuklanmoqda...", 'info');
+      }
+
+      // 1-qadam: Barcha yangi fayllarni avval /api/upload ga yuklab URL olish
+      const finalImages = await Promise.all(
+        imageItems.map(async (item) => {
+          if (item.url) return item.url;
+          if (!item.file) return item.previewUrl;
+          return uploadSingleFileToApi(item.file, 'img');
+        })
+      );
+
+      const finalVideos = await Promise.all(
+        videoItems.map(async (item) => {
+          if (item.url) return item.url;
+          if (!item.file) return item.previewUrl;
+          return uploadSingleFileToApi(item.file, 'vid');
+        })
+      );
+
+      setSavingStatus('saving');
+
+      const newProduct: Product = {
+        id: productToEdit?.id || Date.now().toString(),
+        name: form.name.trim(),
+        pinduoduoPrice: parsedPrice,
+        oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : undefined,
+        vipPrice: form.vipPrice ? Math.round(parseFloat(form.vipPrice)) : undefined,
+        isVipOnly: form.isVipOnly,
+        description: form.desc.trim() || `${form.name.trim()} — YUYU Shop sifatli mahsuloti.`,
+        category: form.category.trim() || 'Boshqa',
+        images: finalImages,
+        videos: finalVideos.length > 0 ? finalVideos : undefined,
+        sizes: form.sizes.split(',').map((s) => s.trim()).filter(Boolean) || ['Standard'],
+        rating: productToEdit?.rating || 5,
+        salesCount: productToEdit?.salesCount || 0,
+        seller: productToEdit?.seller || {
+          name: 'YUYU Shop',
+          avatar: '',
+          rating: 5,
+          description: "Rasmiy do'kon"
+        },
+        isOriginal: form.isOriginal,
+        isCheapPrice: form.isCheapPrice,
+        isFlashSale: form.isFlashSale,
+        flashSaleEnd: form.isFlashSale
+          ? Date.now() + parseInt(form.flashSaleHours || '24', 10) * 3600000
+          : undefined,
+        weight: parseFloat(form.weight) || 0.5
+      };
+
+      // 2-qadam: Olingan R2 media URL'lari bilan mahsulotni /api/products ga saqlash
+      const savedRes = await safeFetchJSON('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProduct)
+        body: JSON.stringify({
+          ...newProduct,
+          price: parsedPrice,
+          video: finalVideos[0] || ''
+        })
       });
-      onAdd(newProduct);
-    } catch {
-      notify("Mahsulotni saqlashda xatolik", 'error');
+
+      onAdd(savedRes?.product || newProduct);
+    } catch (err: any) {
+      notify(err?.message || "Mahsulotni saqlashda xatolik", 'error');
+    } finally {
+      setSavingStatus('');
     }
   };
 
@@ -1615,13 +1738,14 @@ export const AdminAddProductView: React.FC<{
                 <span className="text-[11px] mt-1">Yuklash</span>
                 <input type="file" className="hidden" accept="image/*" multiple onChange={(e) => handleMedia(e, 'img')} />
               </label>
-              {images.map((img, i) => (
+              {imageItems.map((img, i) => (
                 <div key={i} className="w-24 h-24 rounded-xl relative border border-slate-200 dark:border-slate-700 overflow-hidden">
-                  <img src={img} alt="Yuklangan rasm" className="w-full h-full object-cover" />
+                  <img src={img.previewUrl} alt="Yuklangan rasm" className="w-full h-full object-cover" />
                   <button
                     type="button"
+                    disabled={Boolean(savingStatus)}
                     onClick={() => removeMedia(i, 'img')}
-                    className="absolute top-1 right-1 p-1 bg-slate-900/80 text-white rounded-full"
+                    className="absolute top-1 right-1 p-1 bg-slate-900/80 text-white rounded-full disabled:opacity-50"
                   >
                     <X size={12} />
                   </button>
@@ -1638,13 +1762,14 @@ export const AdminAddProductView: React.FC<{
                 <span className="text-[11px] mt-1">Video</span>
                 <input type="file" className="hidden" accept="video/*" onChange={(e) => handleMedia(e, 'vid')} />
               </label>
-              {videos.map((_, i) => (
+              {videoItems.map((_, i) => (
                 <div key={i} className="w-24 h-24 rounded-xl bg-slate-900 flex items-center justify-center relative">
                   <Play size={20} className="text-white" />
                   <button
                     type="button"
+                    disabled={Boolean(savingStatus)}
                     onClick={() => removeMedia(i, 'vid')}
-                    className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full"
+                    className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full disabled:opacity-50"
                   >
                     <X size={12} />
                   </button>
@@ -1655,10 +1780,22 @@ export const AdminAddProductView: React.FC<{
 
           <button
             type="button"
+            disabled={Boolean(savingStatus)}
             onClick={handleSave}
-            className="w-full py-3.5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl text-sm transition-colors"
+            className="w-full py-3.5 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 text-white font-semibold rounded-xl text-sm transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
-            {productToEdit ? "O'zgarishlarni saqlash" : "Mahsulotni qo'shish"}
+            {savingStatus ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>
+                  {savingStatus === 'uploading'
+                    ? 'Fayllar R2 ga yuklanmoqda...'
+                    : 'Mahsulot bazaga saqlanmoqda...'}
+                </span>
+              </>
+            ) : (
+              <span>{productToEdit ? "O'zgarishlarni saqlash" : "Mahsulotni qo'shish"}</span>
+            )}
           </button>
         </div>
       </div>

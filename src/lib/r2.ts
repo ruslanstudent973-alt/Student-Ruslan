@@ -57,7 +57,7 @@ export function getR2Config(): R2Config {
 
   const accessKeyId = (process.env.R2_ACCESS_KEY_ID || "").trim();
   const secretAccessKey = (process.env.R2_SECRET_ACCESS_KEY || "").trim();
-  const bucketName = (process.env.R2_BUCKET_NAME || "").trim();
+  const bucketName = (process.env.R2_BUCKET_NAME || "yuyushop").trim();
   const publicUrl = (process.env.R2_PUBLIC_URL || "").trim().replace(/\/+$/, "");
 
   return {
@@ -115,10 +115,18 @@ export function validateR2Key(rawKey: string): string | null {
   if (!key || key.length > 512) return null;
   if (key.includes("..") || key.includes("\\") || key.includes("\0")) return null;
   const segments = key.split("/");
-  if (segments.length < 2 || !ALLOWED_R2_FOLDERS.has(segments[0])) {
+  if (segments.length === 1) {
+    // Safe top-level object key (e.g. from /api/upload: "1730000000000-photo.jpg")
+    const file = segments[0];
+    if (!file || file.startsWith(".") || !/^[a-zA-Z0-9._-]+$/.test(file)) {
+      return null;
+    }
+    return key;
+  }
+  if (!ALLOWED_R2_FOLDERS.has(segments[0])) {
     return null;
   }
-  if (segments.some((s) => !s || !/^[a-zA-Z0-9._-]+$/.test(s))) {
+  if (segments.some((s) => !s || s.startsWith(".") || !/^[a-zA-Z0-9._-]+$/.test(s))) {
     return null;
   }
   return key;

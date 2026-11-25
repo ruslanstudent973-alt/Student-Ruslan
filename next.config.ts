@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: [
     "mongodb",
+    "mongoose",
     "@aws-sdk/client-s3",
     "@aws-sdk/s3-request-presigner",
     "express",
