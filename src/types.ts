@@ -46,9 +46,19 @@ export interface CartItem {
   quantity: number;
 }
 
+export type CargoStage = 1 | 2 | 3 | 4;
+
+export interface OrderStatusTimestamps {
+  step1?: string | Date | null;
+  step2?: string | Date | null;
+  step3?: string | Date | null;
+  step4?: string | Date | null;
+}
+
 export interface Order {
   id: string;
   userId: string;
+  telegramId?: string;
   username: string;
   productId: string;
   productName: string;
@@ -56,6 +66,9 @@ export interface Order {
   price: number;
   status: 'pending' | 'verifying' | 'paid' | 'shipped' | 'delivered' | 'cancelled';
   trackNumber?: string;
+  trackingCode?: string;
+  cargoStatus?: CargoStage;
+  statusTimestamps?: OrderStatusTimestamps;
   date: string;
   timestamp: number;
   receiptImage?: string;

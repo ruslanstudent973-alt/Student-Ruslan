@@ -4,12 +4,17 @@ import {
   MessageCircle, PlusCircle, Grid, ClipboardList, Image as ImageIcon, Handshake,
   BarChart3, Copy, Check, Search, Trash2, Plus, UploadCloud, X, Send, Loader2,
   MapPin, Video, Play, Zap, Lock, UserPlus, Calendar, Sun, Moon, Star, ShieldCheck, ShieldAlert,
-  Clock, CheckCircle2, Volume2, VolumeX, Crown, Gavel, Wallet, TrendingUp, XCircle
+  Clock, CheckCircle2, Volume2, VolumeX, Crown, Gavel, Wallet, TrendingUp, XCircle, Truck
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell
 } from 'recharts';
-import { Product, User, Order, Banner, View } from '../types';
+import { Product, User, Order, Banner, View, CargoStage } from '../types';
+import {
+  CARGO_STAGES,
+  normalizeCargoStage,
+  formatCargoTimestamp
+} from '../lib/cargoStages';
 import { MARKUP_RATE, CURRENCY_RATE, CARD_NUMBER, CARD_OWNER } from '../constants';
 import { SafeImage, ProductCard } from './YuyuPrimitives';
 import { MAIN_REF_LINK } from './StorefrontViews';
@@ -1130,11 +1135,48 @@ const AdminOrderCard: React.FC<{
   order: Order;
   t: any;
   onUpdateStatus: (id: string, status: Order['status'], trackNumber?: string) => void;
+  onUpdateCargoStatus?: (id: string, cargoStatus: CargoStage, trackingCode?: string) => Promise<void> | void;
   onDelete: (id: string) => void;
-}> = ({ order, t, onUpdateStatus, onDelete }) => {
-  const [trackNum, setTrackNum] = useState(order.trackNumber || '');
+}> = ({ order, t, onUpdateStatus, onUpdateCargoStatus, onDelete }) => {
+  const [trackNum, setTrackNum] = useState(order.trackingCode || order.trackNumber || '');
+  const [updatingStage, setUpdatingStage] = useState<CargoStage | 'track' | null>(null);
+  const currentCargoStage = normalizeCargoStage(order.cargoStatus, order.status);
   const isDone = order.status === 'delivered' || order.status === 'paid';
   const isCancelled = order.status === 'cancelled';
+
+  useEffect(() => {
+    setTrackNum(order.trackingCode || order.trackNumber || '');
+  }, [order.trackingCode, order.trackNumber]);
+
+  const activeStepTsRaw =
+    currentCargoStage === 1
+      ? order.statusTimestamps?.step1 || order.timestamp
+      : currentCargoStage === 2
+      ? order.statusTimestamps?.step2
+      : currentCargoStage === 3
+      ? order.statusTimestamps?.step3
+      : order.statusTimestamps?.step4;
+  const activeStepFormatted = formatCargoTimestamp(activeStepTsRaw);
+
+  const handleStageClick = async (stage: CargoStage) => {
+    if (!onUpdateCargoStatus || updatingStage !== null) return;
+    setUpdatingStage(stage);
+    try {
+      await onUpdateCargoStatus(order.id, stage, trackNum.trim());
+    } finally {
+      setUpdatingStage(null);
+    }
+  };
+
+  const handleSaveTracking = async () => {
+    if (!onUpdateCargoStatus || updatingStage !== null) return;
+    setUpdatingStage('track');
+    try {
+      await onUpdateCargoStatus(order.id, currentCargoStage, trackNum.trim());
+    } finally {
+      setUpdatingStage(null);
+    }
+  };
 
   return (
     <motion.div
@@ -1196,25 +1238,95 @@ const AdminOrderCard: React.FC<{
         </span>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-2.5">
-        <input
-          className="flex-1 px-3.5 py-2.5 yuyu-glass-input rounded-xl text-xs font-mono outline-none focus:border-[#0F294A]"
-          placeholder="Trek raqamini kiriting..."
-          value={trackNum}
-          onChange={(e) => setTrackNum(e.target.value)}
-        />
-        {order.receiptImage && (
-          <a
-            href={order.receiptImage}
-            target="_blank"
-            rel="noreferrer"
-            className="px-4 py-2.5 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-800 text-center whitespace-nowrap"
+      {/* Quick 1-Click Cargo Tracking Controls (1 -> 2 -> 3 -> 4 + Tracking Code) */}
+      <div className="rounded-2xl bg-white/90 dark:bg-slate-900/75 border border-blue-200/70 dark:border-blue-900/50 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-white">
+            <Truck size={14} className="text-[#2563EB] shrink-0" />
+            <span>Kargo bosqichi ({currentCargoStage}/4)</span>
+          </div>
+          {activeStepFormatted && (
+            <span className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+              {activeStepFormatted}
+            </span>
+          )}
+        </div>
+
+        {/* 4 Quick Stage Buttons */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {CARGO_STAGES.map((stage) => {
+            const isActive = stage.step === currentCargoStage;
+            const isPassed = stage.step < currentCargoStage;
+            const isSavingThis = updatingStage === stage.step;
+
+            return (
+              <button
+                key={stage.step}
+                type="button"
+                disabled={updatingStage !== null || isCancelled}
+                onClick={() => handleStageClick(stage.step)}
+                title={stage.label}
+                className={`px-2.5 py-2.5 rounded-xl text-left transition-all border flex flex-col gap-1 disabled:opacity-60 ${
+                  isActive
+                    ? 'bg-[#2563EB] border-[#2563EB] text-white shadow-md shadow-blue-600/20'
+                    : isPassed
+                    ? 'bg-blue-50/90 dark:bg-blue-950/40 border-blue-200/80 dark:border-blue-800/70 text-[#1D4ED8] dark:text-blue-300 hover:bg-blue-100/80'
+                    : 'bg-slate-50/90 dark:bg-slate-800/70 border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-blue-300 hover:text-[#2563EB]'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[11px] font-mono tabular-nums font-bold">
+                    {stage.step}-bosqich
+                  </span>
+                  {isSavingThis ? (
+                    <Loader2 size={12} className="animate-spin shrink-0" />
+                  ) : isActive || isPassed ? (
+                    <Check size={12} strokeWidth={3} className="shrink-0" />
+                  ) : null}
+                </div>
+                <span className="text-[11px] font-semibold leading-tight line-clamp-1">
+                  {stage.shortLabel}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tracking Code Input + Save */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            className="flex-1 px-3.5 py-2.5 bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white outline-none focus:border-[#2563EB]"
+            placeholder="Trek-kodni kiriting (masalan: YY-884210)..."
+            value={trackNum}
+            onChange={(e) => setTrackNum(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={updatingStage !== null}
+            onClick={handleSaveTracking}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
           >
-            Chekni ko'rish
-          </a>
-        )}
+            {updatingStage === 'track' ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Save size={13} />
+            )}
+            <span>Trekni saqlash</span>
+          </button>
+          {order.receiptImage && (
+            <a
+              href={order.receiptImage}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3.5 py-2.5 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-800 text-center whitespace-nowrap"
+            >
+              Chek
+            </a>
+          )}
+        </div>
       </div>
 
+      {/* Legacy payment / fulfillment / cancel actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
         <button
           type="button"
@@ -1253,14 +1365,15 @@ export const AdminOrdersView: React.FC<{
   t: any;
   orders: Order[];
   onUpdateStatus: (id: string, status: Order['status'], trackNumber?: string) => void;
+  onUpdateCargoStatus?: (id: string, cargoStatus: CargoStage, trackingCode?: string) => Promise<void> | void;
   onDelete: (id: string) => void;
   onBack: () => void;
   playSound: () => void;
-}> = ({ t, orders, onUpdateStatus, onDelete, onBack, playSound }) => (
+}> = ({ t, orders, onUpdateStatus, onUpdateCargoStatus, onDelete, onBack, playSound }) => (
   <div className="space-y-8">
     <PageHeader
       title={t.adminOrders}
-      subtitle={`Jami ${orders.length} ta buyurtma`}
+      subtitle={`Jami ${orders.length} ta buyurtma · 1 bosishda kargo bosqichini boshqarish`}
       onBack={() => {
         playSound();
         onBack();
@@ -1278,6 +1391,7 @@ export const AdminOrdersView: React.FC<{
               order={order}
               t={t}
               onUpdateStatus={onUpdateStatus}
+              onUpdateCargoStatus={onUpdateCargoStatus}
               onDelete={onDelete}
             />
           </StaggerItem>

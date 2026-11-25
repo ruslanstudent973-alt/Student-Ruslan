@@ -3,9 +3,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { useScroll, useSpring, useTransform } from 'framer-motion';
 
 interface LandingThreeStageProps {
   reducedMotion?: boolean;
+  /** 0 = Hero/Login, 1..4 = Active Workflow Step triggered by Framer Motion scroll/inView */
+  activeStep?: number;
 }
 
 // Pre-allocated math helpers (zero GC inside animation loop)
@@ -55,14 +58,75 @@ function detectSoftwareWebGL(): boolean {
 
 export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
   reducedMotion = false,
+  activeStep = 0,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const reducedMotionRef = useRef(reducedMotion);
+  const activeStepRef = useRef(activeStep);
   const [webglReady, setWebglReady] = useState(true);
+
+  // =========================================================================
+  // FRAMER MOTION SCROLL-TRIGGERED 3D KEYFRAME TRACKS
+  // Driven by useScroll + useSpring + useTransform and sampled at 60fps via .get()
+  // inside the Three.js render loop with zero React re-renders.
+  // =========================================================================
+  const { scrollYProgress } = useScroll();
+  const smoothScrollProgress = useSpring(scrollYProgress, {
+    stiffness: 88,
+    damping: 24,
+    mass: 0.7,
+    restDelta: 0.0005,
+  });
+
+  // Scroll breakpoints aligned to: Hero (0), Step 1 (0.24), Step 2 (0.48), Step 3 (0.7), Step 4 (0.88), CTA (1.0)
+  const prismRotX = useTransform(
+    smoothScrollProgress,
+    [0, 0.24, 0.48, 0.7, 0.88, 1],
+    [0.15, 1.45, 2.95, 4.35, 5.75, 6.4]
+  );
+  const prismRotY = useTransform(
+    smoothScrollProgress,
+    [0, 0.24, 0.48, 0.7, 0.88, 1],
+    [0.1, 2.1, 4.2, 6.3, 8.2, 9.4]
+  );
+  const prismScaleTrack = useTransform(
+    smoothScrollProgress,
+    [0, 0.24, 0.48, 0.7, 0.88, 1],
+    [0.92, 1.28, 1.44, 1.32, 1.5, 1.04]
+  );
+  const heroCoreScaleTrack = useTransform(
+    smoothScrollProgress,
+    [0, 0.24, 0.48, 0.7, 0.88, 1],
+    [1.0, 1.2, 1.32, 1.24, 1.36, 1.04]
+  );
+  const ringSpreadTrack = useTransform(
+    smoothScrollProgress,
+    [0, 0.24, 0.48, 0.7, 0.88, 1],
+    [1.0, 1.22, 1.38, 1.28, 1.44, 1.06]
+  );
+  const cameraOrbitTrack = useTransform(
+    smoothScrollProgress,
+    [0, 0.24, 0.48, 0.7, 0.88, 1],
+    [0, 1.05, 2.25, 3.55, 4.75, 5.65]
+  );
+
+  const motionTracksRef = useRef({
+    smoothScrollProgress,
+    prismRotX,
+    prismRotY,
+    prismScaleTrack,
+    heroCoreScaleTrack,
+    ringSpreadTrack,
+    cameraOrbitTrack,
+  });
 
   useEffect(() => {
     reducedMotionRef.current = reducedMotion;
   }, [reducedMotion]);
+
+  useEffect(() => {
+    activeStepRef.current = activeStep;
+  }, [activeStep]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -336,21 +400,35 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
     scene.add(spheresGroup);
 
     // =========================================================================
-    // 3. REFRACTING BEVELED 3D PRISMS CLUSTER (4 Architectural Shards)
+    // 3. WORKFLOW-LINKED REFRACTING 3D PRISMS (4 Architectural Shards — 1 per Step)
+    // Each prism rotates and changes size along Framer Motion scroll curves,
+    // and dynamically swells + spotlights opposite the active workflow card!
     // =========================================================================
     const prismsGroup = new THREE.Group();
-    const hexPrismGeo = trackGeo(createBeveledPrismGeometry(6, 0.62, 0.95));
-    const triPrismGeo = trackGeo(createBeveledPrismGeometry(3, 0.72, 1.1));
-    const prismCapRingGeo = trackGeo(new THREE.TorusGeometry(0.76, 0.016, 12, 48));
+    const hexPrismGeo = trackGeo(createBeveledPrismGeometry(6, 0.64, 0.98));
+    const triPrismGeo = trackGeo(createBeveledPrismGeometry(3, 0.74, 1.12));
+    const pentPrismGeo = trackGeo(createBeveledPrismGeometry(5, 0.68, 1.02));
+    const prismCapRingGeo = trackGeo(new THREE.TorusGeometry(0.8, 0.018, 12, 48));
 
+    // Spotlight positions sit opposite each step card (Step 1 left -> prism right, Step 2 right -> prism left, etc.)
     const prismSpecs = [
-      { pos: [-2.85, -1.5, -2.9], geo: hexPrismGeo, scale: 0.92, phase: 0.6 },
-      { pos: [3.2, 0.55, -3.4], geo: triPrismGeo, scale: 1.04, phase: 2.1 },
-      { pos: [-2.2, 2.75, -3.6], geo: triPrismGeo, scale: 0.78, phase: 3.7 },
-      { pos: [2.15, -2.75, -2.5], geo: hexPrismGeo, scale: 0.86, phase: 5.0 },
+      { pos: [2.65, 0.85, -2.5], focusPos: [2.75, 0.3, 0.6], geo: triPrismGeo, scale: 0.94, phase: 0.6 },
+      { pos: [-2.85, -1.25, -2.6], focusPos: [-2.75, 0.15, 0.65], geo: hexPrismGeo, scale: 0.96, phase: 2.1 },
+      { pos: [2.45, -2.35, -2.4], focusPos: [2.75, -0.1, 0.7], geo: pentPrismGeo, scale: 0.9, phase: 3.7 },
+      { pos: [-2.4, 2.3, -2.9], focusPos: [-2.65, 0.2, 0.65], geo: hexPrismGeo, scale: 0.92, phase: 5.0 },
     ];
 
-    const prismAssemblies: Array<{ group: THREE.Group; basePos: THREE.Vector3; phase: number }> = [];
+    const prismAssemblies: Array<{
+      group: THREE.Group;
+      collar: THREE.Mesh;
+      innerMat: THREE.MeshPhysicalMaterial;
+      basePos: THREE.Vector3;
+      focusPos: THREE.Vector3;
+      baseScale: number;
+      currentScale: number;
+      focusWeight: number;
+      phase: number;
+    }> = [];
 
     for (const pSpec of prismSpecs) {
       const pGroup = new THREE.Group();
@@ -361,7 +439,8 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
       prismMesh.renderOrder = 2;
       pGroup.add(prismMesh);
 
-      const prismInner = new THREE.Mesh(innerSphereGeo, pearlCoreMat);
+      const individualInnerMat = trackMat(pearlCoreMat.clone());
+      const prismInner = new THREE.Mesh(innerSphereGeo, individualInnerMat);
       prismInner.scale.setScalar(0.55);
       pGroup.add(prismInner);
 
@@ -372,7 +451,13 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
       prismsGroup.add(pGroup);
       prismAssemblies.push({
         group: pGroup,
+        collar,
+        innerMat: individualInnerMat,
         basePos: new THREE.Vector3(pSpec.pos[0], pSpec.pos[1], pSpec.pos[2]),
+        focusPos: new THREE.Vector3(pSpec.focusPos[0], pSpec.focusPos[1], pSpec.focusPos[2]),
+        baseScale: pSpec.scale,
+        currentScale: pSpec.scale,
+        focusWeight: 0,
         phase: pSpec.phase,
       });
     }
@@ -427,31 +512,15 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
     }
 
     // =========================================================================
-    // INTERACTIVE POINTER PARALLAX + SCROLL-DRIVEN CHOREOGRAPHY
+    // INTERACTIVE POINTER PARALLAX + RESIZE & CONTEXT SAFETY
     // =========================================================================
     const targetPointer = { x: 0, y: 0 };
     const smoothPointer = { x: 0, y: 0 };
-    let targetScroll = 0;
-    let smoothScroll = 0;
-
-    const readNormalizedScroll = () => {
-      const docHeight = Math.max(
-        document.documentElement.scrollHeight - window.innerHeight,
-        1
-      );
-      return THREE.MathUtils.clamp(window.scrollY / docHeight, 0, 1);
-    };
-    targetScroll = readNormalizedScroll();
-    smoothScroll = targetScroll;
 
     const handlePointerMove = (e: PointerEvent) => {
       if (reducedMotionRef.current) return;
       targetPointer.x = (e.clientX / Math.max(window.innerWidth, 1)) * 2 - 1;
       targetPointer.y = -((e.clientY / Math.max(window.innerHeight, 1)) * 2 - 1);
-    };
-
-    const handleScroll = () => {
-      targetScroll = readNormalizedScroll();
     };
 
     const handleResize = () => {
@@ -461,7 +530,6 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
       renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
-      targetScroll = readNormalizedScroll();
     };
 
     let contextLost = false;
@@ -474,7 +542,6 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
     };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('resize', handleResize);
     renderer.domElement.addEventListener('webglcontextlost', handleContextLost);
     renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored);
@@ -515,70 +582,72 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
       const delta = Math.min(clock.getDelta(), 0.05);
       const elapsed = reducedMotionRef.current ? 0 : clock.getElapsedTime();
 
-      // Exponentially damp mouse parallax and scroll progress
+      // Sample Framer Motion spring-smoothed scroll transforms (zero GC, zero React re-renders)
+      const tracks = motionTracksRef.current;
+      const s = tracks.smoothScrollProgress.get();
+      const fmPrismRotX = tracks.prismRotX.get();
+      const fmPrismRotY = tracks.prismRotY.get();
+      const fmPrismScale = tracks.prismScaleTrack.get();
+      const fmHeroScale = tracks.heroCoreScaleTrack.get();
+      const fmRingSpread = tracks.ringSpreadTrack.get();
+      const scrollAngle = tracks.cameraOrbitTrack.get();
+      const stepIdx = activeStepRef.current; // 0 = Hero, 1..4 = Workflow steps
+
+      // Exponentially damp mouse parallax
       smoothPointer.x = THREE.MathUtils.damp(smoothPointer.x, targetPointer.x, 4.5, delta);
       smoothPointer.y = THREE.MathUtils.damp(smoothPointer.y, targetPointer.y, 4.5, delta);
-      smoothScroll = THREE.MathUtils.damp(smoothScroll, targetScroll, 5.2, delta);
 
-      const s = smoothScroll;
-      const scrollAngle = s * Math.PI * 1.85;
-
-      // Scroll-driven Camera Orbit & Angle Choreography across the 4 landing chapters
-      const camX =
-        Math.sin(scrollAngle) * 2.85 + smoothPointer.x * 1.05;
-      const camY =
-        0.25 + Math.sin(s * Math.PI * 2.2) * 1.15 - s * 0.75 + smoothPointer.y * 0.7;
-      const camZ =
-        11.2 - Math.sin(s * Math.PI) * 2.35 + Math.cos(scrollAngle) * 0.55;
+      // Framer Motion scroll-driven Camera Orbit & Angle Choreography
+      const camX = Math.sin(scrollAngle) * 2.6 + smoothPointer.x * 1.05;
+      const camY = 0.25 + Math.sin(s * Math.PI * 2.2) * 1.05 - s * 0.65 + smoothPointer.y * 0.7;
+      const camZ = 11.2 - Math.sin(s * Math.PI) * 2.15 + Math.cos(scrollAngle) * 0.5;
 
       _camTargetPos.set(camX, camY, camZ);
       camera.position.lerp(_camTargetPos, 1 - Math.exp(-6 * delta));
 
       _camLookAt.set(
-        Math.sin(scrollAngle * 0.6) * 0.95 + smoothPointer.x * 0.35,
-        -s * 0.45 + smoothPointer.y * 0.25,
-        -1.2
+        Math.sin(scrollAngle * 0.55) * 0.85 + smoothPointer.x * 0.35,
+        -s * 0.4 + smoothPointer.y * 0.25,
+        -1.15
       );
       _currentLookAt.lerp(_camLookAt, 1 - Math.exp(-6 * delta));
       camera.lookAt(_currentLookAt);
 
-      // Subtle scroll-driven Hero Gyro-Prism morph & scale expansion
-      const morphPulse = 1 + Math.sin(s * Math.PI) * 0.24;
-      heroSculpture.scale.setScalar(morphPulse);
-      heroSculpture.position.x = -0.35 + Math.sin(s * Math.PI * 2.0) * 1.65 - smoothPointer.x * 0.35;
-      heroSculpture.position.y = 0.15 + Math.sin(elapsed * 0.7) * 0.16 - s * 0.35 + smoothPointer.y * 0.22;
+      // Primary Hero Gyro-Prism driven by Framer Motion scale & rotation tracks
+      heroSculpture.scale.setScalar(fmHeroScale);
+      heroSculpture.position.x = -0.35 + Math.sin(s * Math.PI * 2.0) * 1.45 - smoothPointer.x * 0.35;
+      heroSculpture.position.y = 0.15 + Math.sin(elapsed * 0.7) * 0.16 - s * 0.3 + smoothPointer.y * 0.22;
 
-      coreOctaMesh.rotation.y = elapsed * 0.32 + s * Math.PI * 2.4;
-      coreOctaMesh.rotation.x = elapsed * 0.18 + s * Math.PI * 1.1;
-      innerPearlMesh.rotation.y = -elapsed * 0.45 - s * Math.PI * 1.6;
+      coreOctaMesh.rotation.y = elapsed * 0.32 + fmPrismRotY * 0.85;
+      coreOctaMesh.rotation.x = elapsed * 0.18 + fmPrismRotX * 0.65;
+      innerPearlMesh.rotation.y = -elapsed * 0.45 - fmPrismRotY * 0.55;
       innerPearlMesh.scale.setScalar(1 + Math.sin(elapsed * 1.6 + s * 6) * 0.06);
 
-      // Concentric luminous neon-white rings expand & tilt dynamically on scroll
-      const ringSpread = 1 + Math.sin(s * Math.PI) * 0.18;
-      ringA.rotation.z = elapsed * 0.28 + s * 2.4;
-      ringA.rotation.x = Math.PI * 0.34 + s * 1.25;
-      ringA.scale.setScalar(ringSpread);
+      // Concentric luminous neon-white rings expand & tilt via Framer Motion ringSpreadTrack
+      ringA.rotation.z = elapsed * 0.28 + fmPrismRotY * 0.42;
+      ringA.rotation.x = Math.PI * 0.34 + fmPrismRotX * 0.35;
+      ringA.scale.setScalar(fmRingSpread);
 
-      ringB.rotation.y = -elapsed * 0.22 - s * 2.9;
-      ringB.rotation.z = Math.PI * 0.14 + s * 1.5;
-      ringB.scale.setScalar(1 + Math.sin(s * Math.PI) * 0.26);
+      ringB.rotation.y = -elapsed * 0.22 - fmPrismRotY * 0.48;
+      ringB.rotation.z = Math.PI * 0.14 + fmPrismRotX * 0.38;
+      ringB.scale.setScalar(1 + (fmRingSpread - 1) * 1.25);
 
-      ringC.rotation.x = Math.PI * 0.45 - elapsed * 0.16 + s * 1.9;
-      ringC.rotation.y = -Math.PI * 0.22 + elapsed * 0.14 - s * 2.1;
-      ringC.scale.setScalar(1 + Math.sin(s * Math.PI) * 0.32);
+      ringC.rotation.x = Math.PI * 0.45 - elapsed * 0.16 + fmPrismRotX * 0.42;
+      ringC.rotation.y = -Math.PI * 0.22 + elapsed * 0.14 - fmPrismRotY * 0.38;
+      ringC.scale.setScalar(1 + (fmRingSpread - 1) * 1.45);
 
-      // Orbiting beveled crystal satellites widen as user scrolls through steps
-      const satOrbitBoost = 1 + Math.sin(s * Math.PI) * 0.35;
+      // Orbiting beveled crystal satellites rotate & scale smoothly with Framer Motion scroll curves
       for (let i = 0; i < satellites.length; i++) {
         const sat = satellites[i];
-        const a = (i / satellites.length) * Math.PI * 2 + elapsed * 0.35 + s * Math.PI * 2.0;
+        const a = (i / satellites.length) * Math.PI * 2 + elapsed * 0.35 + fmPrismRotY * 0.52;
         sat.position.set(
-          Math.cos(a) * 2.45 * satOrbitBoost,
-          Math.sin(a * 1.5) * 1.45 * satOrbitBoost,
+          Math.cos(a) * 2.45 * fmRingSpread,
+          Math.sin(a * 1.5) * 1.45 * fmRingSpread,
           Math.sin(a * 2) * 0.78
         );
-        sat.rotation.x = elapsed * 0.6 + i + s * 3.1;
-        sat.rotation.y = elapsed * 0.45 + i * 1.3;
+        sat.rotation.x = elapsed * 0.55 + i + fmPrismRotX * 0.9;
+        sat.rotation.y = elapsed * 0.42 + i * 1.3 + fmPrismRotY * 0.7;
+        sat.scale.setScalar(0.88 + (fmPrismScale - 0.9) * 0.65);
       }
 
       // Floating frosted glass spheres drift & respond to scroll parallax
@@ -588,44 +657,70 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
         item.group.position.x =
           item.basePos.x +
           Math.cos(elapsed * 0.38 + item.phase) * 0.35 +
-          Math.sin(s * Math.PI * 1.5 + item.phase) * 1.1 * dir -
+          Math.sin(s * Math.PI * 1.5 + item.phase) * 1.05 * dir -
           smoothPointer.x * 0.55 * dir;
         item.group.position.y =
           item.basePos.y +
           Math.sin(elapsed * 0.52 + item.phase) * 0.38 +
-          (s - 0.5) * 1.6 * dir +
+          (s - 0.5) * 1.5 * dir +
           smoothPointer.y * 0.42;
         item.group.position.z =
-          item.basePos.z + Math.cos(s * Math.PI * 2 + item.phase) * 0.9;
-        item.group.rotation.y = elapsed * 0.24 * dir + s * 2.2 * dir;
+          item.basePos.z + Math.cos(s * Math.PI * 2 + item.phase) * 0.85;
+        item.group.rotation.y = elapsed * 0.24 * dir + fmPrismRotY * 0.28 * dir;
         item.group.rotation.x = elapsed * 0.15 + item.phase;
         item.group.scale.setScalar(
           item.baseScale * (1 + Math.sin(s * Math.PI + item.phase) * 0.14)
         );
       }
 
-      // Refracting prisms rotate & sweep in opposing depth parallax
+      // 4 Workflow-Synchronized Refracting 3D Prisms:
+      // Rotate & resize continuously via Framer Motion scroll tracks AND spotlight the active workflow step!
       for (let i = 0; i < prismAssemblies.length; i++) {
         const item = prismAssemblies[i];
-        const dir = i % 2 === 0 ? -1 : 1;
-        item.group.position.x =
+        const dir = i % 2 === 0 ? 1 : -1;
+        const isHighlighted = stepIdx === i + 1;
+        const targetWeight = isHighlighted ? 1 : 0;
+        item.focusWeight = THREE.MathUtils.damp(item.focusWeight, targetWeight, 4.8, delta);
+
+        const idleX =
           item.basePos.x +
           Math.sin(elapsed * 0.3 + item.phase) * 0.3 +
-          Math.cos(s * Math.PI * 1.8 + item.phase) * 1.15 * dir +
+          Math.cos(s * Math.PI * 1.8 + item.phase) * 1.0 * dir +
           smoothPointer.x * 0.48;
-        item.group.position.y =
+        const idleY =
           item.basePos.y +
           Math.cos(elapsed * 0.42 + item.phase) * 0.32 -
-          (s - 0.5) * 1.45 * dir -
+          (s - 0.5) * 1.3 * dir -
           smoothPointer.y * 0.36;
-        item.group.rotation.x = elapsed * 0.25 + item.phase + s * 2.6;
-        item.group.rotation.y = elapsed * 0.35 * dir + s * 3.2 * dir;
+        const idleZ = item.basePos.z;
+
+        const focusX = item.focusPos.x + smoothPointer.x * 0.35;
+        const focusY = item.focusPos.y + Math.sin(elapsed * 0.85 + item.phase) * 0.18 + smoothPointer.y * 0.25;
+        const focusZ = item.focusPos.z;
+
+        item.group.position.x = THREE.MathUtils.lerp(idleX, focusX, item.focusWeight);
+        item.group.position.y = THREE.MathUtils.lerp(idleY, focusY, item.focusWeight);
+        item.group.position.z = THREE.MathUtils.lerp(idleZ, focusZ, item.focusWeight);
+
+        // Dramatic, crisp scroll-triggered rotation & size change emphasizing each workflow step
+        const stepBoostScale =
+          stepIdx === 0
+            ? item.baseScale * fmPrismScale
+            : item.baseScale * fmPrismScale * THREE.MathUtils.lerp(0.84, 1.34, item.focusWeight);
+        item.currentScale = THREE.MathUtils.damp(item.currentScale, stepBoostScale, 5.5, delta);
+        item.group.scale.setScalar(item.currentScale);
+
+        item.group.rotation.x = elapsed * 0.25 + item.phase + fmPrismRotX * (0.95 + item.focusWeight * 0.45);
+        item.group.rotation.y = elapsed * 0.38 * dir + fmPrismRotY * (0.85 + item.focusWeight * 0.5) * dir;
+        item.group.rotation.z = Math.sin(fmPrismRotX * 0.5 + item.phase) * 0.45;
+        item.collar.rotation.z = elapsed * 0.65 * dir + fmPrismRotY * 0.5;
+        item.innerMat.emissiveIntensity = THREE.MathUtils.lerp(0.24, 0.95, item.focusWeight);
       }
 
       // Subtle orbital micro-facets
       for (let i = 0; i < sparkleCount; i++) {
         const sp = sparkleData[i];
-        const a = sp.angle + elapsed * sp.speed + s * 1.6;
+        const a = sp.angle + elapsed * sp.speed + s * 1.8;
         _dummy.position.set(
           Math.cos(a) * sp.radius,
           sp.y + Math.sin(elapsed * 0.7 + i) * 0.24 + (s - 0.5) * 1.2,
@@ -656,7 +751,6 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
       window.cancelAnimationFrame(frameId);
       window.clearTimeout(timerId);
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
@@ -679,14 +773,12 @@ export const LandingThreeStage: React.FC<LandingThreeStageProps> = ({
       {webglReady ? (
         <div ref={mountRef} className="w-full h-full" />
       ) : (
-        /* Graceful luminous pearl fallback if WebGL is disabled */
         <div className="w-full h-full relative">
           <div className="absolute -top-24 -left-20 w-[34rem] h-[34rem] rounded-full bg-sky-200/45 blur-[110px]" />
           <div className="absolute bottom-[-10%] right-[-8%] w-[38rem] h-[38rem] rounded-full bg-blue-100/60 blur-[120px]" />
           <div className="absolute top-[32%] left-[42%] w-[24rem] h-[24rem] rounded-full bg-indigo-100/45 blur-[100px]" />
         </div>
       )}
-      {/* Subtle luminous radial vignette so foreground text stays effortlessly crisp */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(255,255,255,0.55),transparent_58%),radial-gradient(circle_at_82%_78%,rgba(224,242,254,0.45),transparent_55%)]" />
     </div>
   );

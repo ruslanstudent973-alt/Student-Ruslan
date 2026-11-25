@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MotionConfig, AnimatePresence, motion } from 'framer-motion';
 import { Check, Ban, Bell, Sparkles, Star, ShieldCheck } from 'lucide-react';
-import { Product, View, User, Order, Banner, ProductVideo, CustomRequest } from './types';
+import { Product, View, User, Order, Banner, ProductVideo, CustomRequest, CargoStage } from './types';
+import { getCargoStageMeta } from './lib/cargoStages';
 import { MARKUP_RATE, CURRENCY_RATE } from './constants';
 import { DesktopHeader, DesktopFooter, MobileBottomNav } from './components/YuyuPrimitives';
 import { GlobalAmbientCanvas, pageTransitionVariants } from './components/GlassMotionPrimitives';
@@ -749,6 +750,40 @@ const App: React.FC = () => {
     }
   };
 
+  const updateOrderCargoStatus = async (
+    orderId: string,
+    cargoStatus: CargoStage,
+    trackingCode?: string
+  ) => {
+    try {
+      const res = await safeFetchJSON(`/api/orders/${encodeURIComponent(orderId)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cargoStatus,
+          ...(trackingCode !== undefined ? { trackingCode } : {})
+        })
+      });
+      const updatedOrder = res?.order;
+      if (updatedOrder) {
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, ...updatedOrder } : o))
+        );
+      }
+      const stageMeta = getCargoStageMeta(cargoStatus);
+      if (res?.telegramNotified) {
+        notify(
+          `Kargo bosqichi yangilandi: ${stageMeta.label} · Telegram xabar yuborildi`,
+          'success'
+        );
+      } else {
+        notify(`Kargo bosqichi yangilandi: ${stageMeta.label}`, 'success');
+      }
+    } catch {
+      notify("Kargo holatini yangilashda xatolik yuz berdi", 'error');
+    }
+  };
+
   const deleteOrder = async (orderId: string) => {
     try {
       await safeFetchJSON(`/api/orders/${orderId}`, { method: 'DELETE' });
@@ -1185,6 +1220,7 @@ const App: React.FC = () => {
             setReceiptOrder={setReceiptOrder}
             notify={notify}
             safeFetchJSON={safeFetchJSON}
+            onRefreshOrders={() => fetchData(currentUser.telegramId)}
           />
         )}
 
@@ -1307,6 +1343,7 @@ const App: React.FC = () => {
             t={t}
             orders={orders}
             onUpdateStatus={updateOrderStatus}
+            onUpdateCargoStatus={updateOrderCargoStatus}
             onDelete={deleteOrder}
             onBack={() => navigate('profile')}
             onUnauthorizedBack={() => navigate('profile')}

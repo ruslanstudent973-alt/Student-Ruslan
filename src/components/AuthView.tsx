@@ -6,6 +6,7 @@ import {
   AnimatePresence,
   useScroll,
   useTransform,
+  useInView,
   useReducedMotion
 } from 'framer-motion';
 import {
@@ -117,16 +118,27 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
 
 const ScrollStepCard: React.FC<{
   step: WorkflowStep;
+  stepIndex: number;
+  isActive: boolean;
+  onActivate: (stepIndex: number) => void;
   reducedMotion: boolean;
-}> = ({ step, reducedMotion }) => {
+}> = ({ step, stepIndex, isActive, onActivate, reducedMotion }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const inView = useInView(cardRef, { amount: 0.55 });
   const { scrollYProgress } = useScroll({
     target: cardRef,
     offset: ['start end', 'end start']
   });
 
-  const parallaxY = useTransform(scrollYProgress, [0, 0.5, 1], [46, 0, -42]);
-  const scale = useTransform(scrollYProgress, [0, 0.45, 1], [0.965, 1, 0.975]);
+  useEffect(() => {
+    if (inView) {
+      onActivate(stepIndex);
+    }
+  }, [inView, onActivate, stepIndex]);
+
+  const parallaxY = useTransform(scrollYProgress, [0, 0.5, 1], [48, 0, -44]);
+  const scale = useTransform(scrollYProgress, [0, 0.45, 1], [0.955, 1.02, 0.965]);
+  const opacity = useTransform(scrollYProgress, [0, 0.25, 0.75, 1], [0.72, 1, 1, 0.8]);
 
   return (
     <div
@@ -136,12 +148,22 @@ const ScrollStepCard: React.FC<{
       }`}
     >
       <motion.article
-        style={reducedMotion ? undefined : { y: parallaxY, scale }}
-        className="w-full max-w-[540px] rounded-[1.85rem] border border-white/90 bg-white/70 backdrop-blur-xl p-6 sm:p-8 shadow-[0_24px_60px_-24px_rgba(15,41,74,0.13),inset_0_1px_1px_rgba(255,255,255,0.95)] transition-shadow hover:shadow-[0_30px_72px_-22px_rgba(15,41,74,0.18)]"
+        style={reducedMotion ? undefined : { y: parallaxY, scale, opacity }}
+        className={`w-full max-w-[540px] rounded-[1.85rem] border backdrop-blur-xl p-6 sm:p-8 transition-all duration-300 ${
+          isActive
+            ? 'border-sky-300/95 bg-white/82 shadow-[0_32px_78px_-22px_rgba(15,41,74,0.20),inset_0_1px_1px_rgba(255,255,255,1)]'
+            : 'border-white/90 bg-white/68 shadow-[0_24px_60px_-24px_rgba(15,41,74,0.13),inset_0_1px_1px_rgba(255,255,255,0.95)]'
+        }`}
       >
         <div className="flex items-start justify-between gap-4 mb-5">
           <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#0F294A] to-[#245694] text-white flex items-center justify-center shadow-[0_10px_24px_-8px_rgba(15,41,74,0.45)] shrink-0">
+            <div
+              className={`w-11 h-11 rounded-2xl text-white flex items-center justify-center shrink-0 transition-transform duration-300 ${
+                isActive
+                  ? 'bg-gradient-to-br from-[#0F294A] to-[#0284C7] shadow-[0_12px_28px_-8px_rgba(2,132,199,0.5)] scale-105'
+                  : 'bg-gradient-to-br from-[#0F294A] to-[#245694] shadow-[0_10px_24px_-8px_rgba(15,41,74,0.45)]'
+              }`}
+            >
               {step.icon}
             </div>
             <div>
@@ -225,8 +247,18 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [recentClient, setRecentClient] = useState<RecentClientProfile | null>(null);
   const [hasPlayedEntrance, setHasPlayedEntrance] = useState(false);
 
+  const [activeWorkflowStep, setActiveWorkflowStep] = useState<number>(0);
+
+  const heroSectionRef = useRef<HTMLElement | null>(null);
+  const heroInView = useInView(heroSectionRef, { amount: 0.45 });
   const loginSectionRef = useRef<HTMLDivElement | null>(null);
   const loginPhoneInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (heroInView) {
+      setActiveWorkflowStep(0);
+    }
+  }, [heroInView]);
 
   useEffect(() => {
     setUnlockLabel(getSuggestedDeviceLabel());
@@ -607,9 +639,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
   return (
     <div className="relative min-h-screen w-full overflow-x-clip bg-[#F4F8FF] text-slate-900 selection:bg-sky-200 selection:text-[#0F294A]">
       {/* =====================================================================
-          INTERACTIVE THREE.JS 3D STAGE (Mouse Parallax + Scroll Choreography)
+          INTERACTIVE THREE.JS 3D STAGE (Framer Motion Scroll + Parallax)
          ===================================================================== */}
-      <LandingThreeStage reducedMotion={prefersReducedMotion} />
+      <LandingThreeStage
+        reducedMotion={prefersReducedMotion}
+        activeStep={activeWorkflowStep}
+      />
 
       {/* =====================================================================
           TOP NAVIGATION BAR (Clean 3-Zone Apple/Stripe Frosted Header)
@@ -682,6 +717,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
          ===================================================================== */}
       <main className="relative z-10">
         <section
+          ref={heroSectionRef}
           id="capabilities"
           className="max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 pt-8 pb-16 sm:pt-12 sm:pb-20 lg:pt-14 lg:pb-24 min-h-[calc(100vh-72px)] grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center"
         >
@@ -1347,10 +1383,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
           </div>
 
           <div className="space-y-16 sm:space-y-24">
-            {WORKFLOW_STEPS.map((step) => (
+            {WORKFLOW_STEPS.map((step, idx) => (
               <ScrollStepCard
                 key={step.num}
                 step={step}
+                stepIndex={idx + 1}
+                isActive={activeWorkflowStep === idx + 1}
+                onActivate={setActiveWorkflowStep}
                 reducedMotion={prefersReducedMotion}
               />
             ))}

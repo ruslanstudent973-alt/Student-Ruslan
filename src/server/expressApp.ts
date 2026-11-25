@@ -671,12 +671,38 @@ async function loadAllDataFromDb(db: Db) {
     };
   });
 
-  const orders = rawOrders.map((o: any) => ({
-    ...o,
-    receiptImage: isLargeDataUri(o.receiptImage)
-      ? `/api/media/order/${encodeURIComponent(o.id)}/receipt`
-      : o.receiptImage
-  }));
+  const orders = rawOrders.map((o: any) => {
+    const resolvedCargoStatus =
+      o.cargoStatus === 1 || o.cargoStatus === 2 || o.cargoStatus === 3 || o.cargoStatus === 4
+        ? o.cargoStatus
+        : o.status === "delivered"
+        ? 4
+        : o.status === "shipped"
+        ? 2
+        : 1;
+    const resolvedTracking =
+      typeof o.trackingCode === "string" && o.trackingCode.trim()
+        ? o.trackingCode.trim()
+        : typeof o.trackNumber === "string"
+        ? o.trackNumber.trim()
+        : "";
+    const existingTs = o.statusTimestamps && typeof o.statusTimestamps === "object" ? o.statusTimestamps : {};
+    const step1Default = existingTs.step1 || (o.timestamp ? new Date(o.timestamp).toISOString() : undefined);
+
+    return {
+      ...o,
+      cargoStatus: resolvedCargoStatus,
+      trackingCode: resolvedTracking,
+      trackNumber: resolvedTracking || o.trackNumber || "",
+      statusTimestamps: {
+        ...existingTs,
+        ...(step1Default ? { step1: step1Default } : {})
+      },
+      receiptImage: isLargeDataUri(o.receiptImage)
+        ? `/api/media/order/${encodeURIComponent(o.id)}/receipt`
+        : o.receiptImage
+    };
+  });
 
   const banners = rawBanners.map((b: any) => ({
     ...b,
@@ -1466,10 +1492,19 @@ router.post("/orders", async (req, res) => {
       }
     }
 
+    const initialTracking = String(rawOrder.trackingCode || rawOrder.trackNumber || "").trim();
+    const createdTimestamp = rawOrder.timestamp || Date.now();
     const newOrder: Record<string, any> = {
       ...rawOrder,
       id: orderId,
-      timestamp: rawOrder.timestamp || Date.now(),
+      telegramId: rawOrder.telegramId || rawOrder.userId || "",
+      timestamp: createdTimestamp,
+      cargoStatus: 1,
+      trackingCode: initialTracking,
+      trackNumber: initialTracking,
+      statusTimestamps: {
+        step1: new Date(createdTimestamp)
+      },
       cashbackUsed: appliedCashback,
       cashbackEarned: 0,
       vipRewardApplied: false
@@ -1520,7 +1555,19 @@ router.post("/orders/update", async (req, res) => {
 
     const updateFields: Record<string, any> = { status };
     if (trackNumber !== undefined) {
-      updateFields.trackNumber = trackNumber;
+      const cleanedTrack = String(trackNumber || "").trim();
+      updateFields.trackNumber = cleanedTrack;
+      updateFields.trackingCode = cleanedTrack;
+    }
+    if (status === "delivered" && Number(existingOrder.cargoStatus || 1) < 4) {
+      updateFields.cargoStatus = 4;
+      updateFields["statusTimestamps.step4"] = new Date();
+    } else if (status === "shipped" && Number(existingOrder.cargoStatus || 1) < 2) {
+      updateFields.cargoStatus = 2;
+      updateFields["statusTimestamps.step2"] = new Date();
+    } else if (status === "paid" && !existingOrder.statusTimestamps?.step1) {
+      updateFields.cargoStatus = Number(existingOrder.cargoStatus || 1);
+      updateFields["statusTimestamps.step1"] = new Date();
     }
 
     let updatedUser: any = null;

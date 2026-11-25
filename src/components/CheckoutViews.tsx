@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ShoppingCart, ChevronLeft, Trash2, CreditCard, Package, Truck, MapPin,
   Copy, UploadCloud, ShieldCheck, Loader2, Check, Receipt, Clock, CheckCircle2, ArrowRight,
-  Crown, Wallet, Zap, XCircle
+  Crown, Wallet, Zap, XCircle, RefreshCw
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Order, Product, User, View, ResaleListing } from '../types';
@@ -22,6 +22,7 @@ import {
 } from '../utils/vip';
 import { StaggerGrid, StaggerItem, GlassReveal } from './GlassMotionPrimitives';
 import { uploadMediaSmart } from '../utils/r2MediaUpload';
+import { LiveCargoTracker } from './LiveCargoTracker';
 
 export const CartView: React.FC<{
   t: any;
@@ -917,6 +918,7 @@ export const OrdersView: React.FC<{
   setReceiptOrder: (o: Order) => void;
   notify?: (msg: string, type?: 'success' | 'error' | 'info') => void;
   safeFetchJSON?: (url: string, options?: RequestInit) => Promise<any>;
+  onRefreshOrders?: () => Promise<void> | void;
 }> = ({
   t,
   orders,
@@ -925,10 +927,35 @@ export const OrdersView: React.FC<{
   onNavigate,
   setReceiptOrder,
   notify,
-  safeFetchJSON
+  safeFetchJSON,
+  onRefreshOrders
 }) => {
   const [myResales, setMyResales] = useState<ResaleListing[]>([]);
   const [resaleModalOrder, setResaleModalOrder] = useState<Order | null>(null);
+  const [refreshingCargo, setRefreshingCargo] = useState(false);
+
+  const onRefreshRef = useRef(onRefreshOrders);
+  useEffect(() => {
+    onRefreshRef.current = onRefreshOrders;
+  }, [onRefreshOrders]);
+
+  useEffect(() => {
+    if (!onRefreshRef.current) return;
+    const interval = window.setInterval(() => {
+      void onRefreshRef.current?.();
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const handleManualRefresh = async () => {
+    if (!onRefreshRef.current || refreshingCargo) return;
+    setRefreshingCargo(true);
+    try {
+      await onRefreshRef.current();
+    } finally {
+      window.setTimeout(() => setRefreshingCargo(false), 400);
+    }
+  };
 
   useEffect(() => {
     const uid = currentUser?.telegramId || currentUser?.phoneNumber;
@@ -969,14 +996,27 @@ export const OrdersView: React.FC<{
             Jami {orders.length} ta buyurtma tarixi
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => onNavigate('tayyor_bozor')}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl yuyu-glass-subtle text-xs font-semibold text-[#0F294A] dark:text-blue-400 hover:bg-white/90 dark:hover:bg-slate-800 transition-colors"
-        >
-          <Zap size={14} className="text-amber-500" />
-          <span>⚡ Tayyor Bozor vitrinasi</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {onRefreshOrders && (
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={refreshingCargo}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-semibold text-[#2563EB] dark:text-blue-400 hover:bg-blue-50/70 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+            >
+              <RefreshCw size={14} className={refreshingCargo ? 'animate-spin' : ''} />
+              <span>Kargoni yangilash</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onNavigate('tayyor_bozor')}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl yuyu-glass-subtle text-xs font-semibold text-[#0F294A] dark:text-blue-400 hover:bg-white/90 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+          >
+            <Zap size={14} className="text-amber-500" />
+            <span>Tayyor Bozor vitrinasi</span>
+          </button>
+        </div>
       </div>
 
       {orders.length === 0 ? (
@@ -1071,6 +1111,15 @@ export const OrdersView: React.FC<{
                       </div>
                     </div>
 
+                    {/* Live China -> Uzbekistan Cargo Tracker with animated blue truck */}
+                    {!isCancelled ? (
+                      <LiveCargoTracker order={o} />
+                    ) : (
+                      <div className="rounded-2xl bg-red-50/80 dark:bg-red-950/30 border border-red-200/70 dark:border-red-900/50 px-4 py-3 text-xs text-red-700 dark:text-red-300">
+                        Ushbu buyurtma bekor qilingan, kargo harakati to&apos;xtatilgan.
+                      </div>
+                    )}
+
                     {/* Tayyor Bozor Resale Status / 1-Click CTA on Delivered Orders */}
                     {resale && resale.status !== 'rejected' && (
                       <div
@@ -1135,12 +1184,15 @@ export const OrdersView: React.FC<{
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200/60 dark:border-slate-800/70">
-                    {o.trackNumber ? (
-                      <div className="text-xs font-mono text-slate-600 dark:text-slate-300">
-                        Trek: <span className="font-semibold text-[#0F294A] dark:text-blue-400">{o.trackNumber}</span>
+                    {(o.trackingCode || o.trackNumber) ? (
+                      <div className="text-xs font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                        Trek-kod:{' '}
+                        <span className="font-semibold text-[#2563EB] dark:text-blue-400">
+                          {o.trackingCode || o.trackNumber}
+                        </span>
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400">Trek raqami kutilmoqda</span>
+                      <span className="text-xs text-slate-400">Trek-kod kutilmoqda</span>
                     )}
 
                     <motion.button
