@@ -3,7 +3,7 @@ import {
   ChevronLeft, LogOut, Camera, Edit3, Save, Heart, Ticket, Package, Users,
   MessageCircle, PlusCircle, Grid, ClipboardList, Image as ImageIcon, Handshake,
   BarChart3, Copy, Check, Search, Trash2, Plus, UploadCloud, X, Send, Loader2,
-  MapPin, Video, Play, Zap, Lock, UserPlus, Calendar, Sun, Moon, Star, ShieldCheck,
+  MapPin, Video, Play, Zap, Lock, UserPlus, Calendar, Sun, Moon, Star, ShieldCheck, ShieldAlert,
   Clock, CheckCircle2, Volume2, VolumeX, Crown, Gavel, Wallet, TrendingUp, XCircle
 } from 'lucide-react';
 import {
@@ -79,6 +79,7 @@ export const ProfileView: React.FC<{
   pendingSellerPayoutActionsCount?: number;
   pendingResaleCount?: number;
   pendingAffiliatePayoutsCount?: number;
+  securityAttacks24h?: number;
 }> = ({
   t,
   user,
@@ -98,7 +99,8 @@ export const ProfileView: React.FC<{
   pricedCustomRequestsCount = 0,
   pendingSellerPayoutActionsCount = 0,
   pendingResaleCount = 0,
-  pendingAffiliatePayoutsCount = 0
+  pendingAffiliatePayoutsCount = 0,
+  securityAttacks24h = 0
 }) => {
   const [editing, setEditing] = useState(false);
   const [tempBio, setTempBio] = useState(user.bio || '');
@@ -312,6 +314,13 @@ export const ProfileView: React.FC<{
       badge: pendingCustomRequestsCount
     },
     { view: 'admin_access', label: 'Admin ruxsatlari', icon: <ShieldCheck size={18} />, highlight: true },
+    {
+      view: 'admin_security',
+      label: 'Xavfsizlik markazi',
+      icon: <ShieldAlert size={18} />,
+      highlight: true,
+      badge: securityAttacks24h
+    },
     { view: 'stats', label: 'Statistika', icon: <BarChart3 size={18} /> },
     { view: 'manage_orders', label: 'Buyurtmalar', icon: <ClipboardList size={18} /> },
     { view: 'admin_add_product', label: "Mahsulot qo'shish", icon: <PlusCircle size={18} /> },

@@ -146,7 +146,8 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         'admin_seller_payouts',
         'admin_tayyor_bozor',
         'admin_affiliates',
-        'admin_access'
+        'admin_access',
+        'admin_security'
       ]
     }
   ];

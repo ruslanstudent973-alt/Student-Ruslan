@@ -34,7 +34,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
       </head>
-      <body className="bg-[#F8FAFC] text-slate-900 dark:bg-[#0B1120] dark:text-slate-100 antialiased selection:bg-[#0F294A] selection:text-white">
+      <body
+        suppressHydrationWarning
+        className="bg-[#F8FAFC] text-slate-900 dark:bg-[#0B1120] dark:text-slate-100 antialiased selection:bg-[#0F294A] selection:text-white"
+      >
         {children}
       </body>
     </html>

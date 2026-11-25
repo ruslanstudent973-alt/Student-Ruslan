@@ -32,19 +32,10 @@ export const LoadingView: React.FC<{ onRetry?: () => void }> = ({ onRetry }) => 
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 280, damping: 22 }}
-        className="yuyu-glass-strong rounded-3xl border px-10 py-9 flex flex-col items-center max-w-xs w-full"
-      >
-        <motion.div
-          animate={{ y: [0, -6, 0] }}
-          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-          className="mb-5"
-        >
+      <div className="yuyu-glass-strong rounded-3xl border px-10 py-9 flex flex-col items-center max-w-xs w-full transition-all duration-300">
+        <div className="mb-5 animate-pulse">
           <YuyuMonogram size={56} />
-        </motion.div>
+        </div>
         <h1 className="font-display text-3xl font-bold text-[#0F294A] dark:text-white tracking-tight mb-2">
           YUYU Shop
         </h1>
@@ -67,7 +58,7 @@ export const LoadingView: React.FC<{ onRetry?: () => void }> = ({ onRetry }) => 
             Qayta yuklash
           </button>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 };

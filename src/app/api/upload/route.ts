@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { verifyNextAdminDevice } from "@/lib/adminAuth";
+import { enforceApiSecurity } from "@/lib/securityEngine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,6 +83,8 @@ function buildSafeUniqueFileName(originalName: string, mimeType: string): string
 }
 
 export async function POST(request: NextRequest) {
+  const blocked = await enforceApiSecurity(request);
+  if (blocked) return blocked;
   try {
     // Only authenticated admin devices may upload catalog media into the R2 bucket
     const adminDevice = await verifyNextAdminDevice(request);

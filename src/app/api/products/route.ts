@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase, { isMongoConfigured } from "@/lib/mongodb";
 import { verifyNextAdminDevice } from "@/lib/adminAuth";
+import { enforceApiSecurity } from "@/lib/securityEngine";
 import ProductModel, { type IProductDocument } from "@/models/Product";
 import mongoose from "mongoose";
 
@@ -54,6 +55,8 @@ function serializeProduct(doc: any) {
 }
 
 export async function GET(request: NextRequest) {
+  const blocked = await enforceApiSecurity(request);
+  if (blocked) return blocked;
   try {
     if (!isMongoConfigured()) {
       return NextResponse.json(
@@ -199,6 +202,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const blocked = await enforceApiSecurity(request);
+  if (blocked) return blocked;
   try {
     const adminDevice = await verifyNextAdminDevice(request);
     if (!adminDevice) {

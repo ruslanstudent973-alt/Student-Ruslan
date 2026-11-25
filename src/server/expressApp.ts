@@ -17,6 +17,11 @@ import {
   applyAffiliateOnOrderDelivered,
   applyAffiliateOnOrderCancelled
 } from "./tayyorAffiliateRoutes";
+import {
+  extractClientContextFromHeaders,
+  recordAuthorizedLogin,
+  recordFailedAuthAttempt
+} from "../lib/securityEngine";
 
 const existingEnvUri = (process.env.MONGODB_URI || "").trim();
 const existingGeminiKey = (process.env.GEMINI_API_KEY || "").trim();
@@ -1107,9 +1112,16 @@ router.post("/cart", async (req, res) => {
 
 // Telegram notification proxy
 router.post("/notify", async (req, res) => {
-  const { message, chatId } = req.body;
-  const token = process.env.TELEGRAM_TOKEN || "8543158894:AAHkaN83tLCgNrJ-Omutn744aTui784GScc";
-  const targetChatId = chatId || "8215056224";
+  const { message, chatId } = req.body || {};
+  const token = (process.env.TELEGRAM_TOKEN || "").trim();
+  const targetChatId = String(chatId || process.env.ADMIN_CHAT_ID || "").trim();
+  if (!token || !targetChatId) {
+    return res.json({
+      success: false,
+      skipped: true,
+      error: "TELEGRAM_TOKEN yoki ADMIN_CHAT_ID muhit o'zgaruvchilari sozlanmagan"
+    });
+  }
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3500);
@@ -2387,6 +2399,10 @@ function sanitizeDeviceForClient(doc: any) {
 // POST /api/auth/login — returning client login by phone number
 router.post("/auth/login", async (req, res) => {
   try {
+    const clientCtx = extractClientContextFromHeaders((h) => {
+      const val = req.headers[h.toLowerCase()];
+      return Array.isArray(val) ? val[0] : val;
+    });
     const { phoneNumber, deviceToken } = req.body || {};
     const variants = buildPhoneMatchVariants(phoneNumber);
     if (variants.length === 0) {
@@ -2409,12 +2425,28 @@ router.post("/auth/login", async (req, res) => {
     if (existing.isAdmin) {
       const activeDev = await findActiveAdminDevice(db, String(deviceToken || ""));
       if (!activeDev) {
+        await recordFailedAuthAttempt({
+          ctx: clientCtx,
+          path: "/api/auth/login",
+          username: existing.username,
+          phoneNumber: existing.phoneNumber,
+          reason: "Ruxsat berilmagan qurilmadan admin hisobiga kirish urinishi",
+          isAdminRoute: true
+        });
         return res.status(403).json({
           error: "Bu hisobga faqat ruxsat berilgan qurilmadan Admin Panel orqali kirish mumkin",
           code: "ADMIN_DEVICE_REQUIRED"
         });
       }
     }
+
+    void recordAuthorizedLogin({
+      ctx: clientCtx,
+      path: "/api/auth/login",
+      username: existing.username || "Foydalanuvchi",
+      phoneNumber: existing.phoneNumber,
+      isAdmin: Boolean(existing.isAdmin)
+    });
 
     res.json({ success: true, user: existing });
   } catch (e: any) {
@@ -2472,6 +2504,17 @@ router.post("/auth/register", async (req, res) => {
     };
 
     await db.collection("users").insertOne({ ...newUser });
+    const regCtx = extractClientContextFromHeaders((h) => {
+      const val = req.headers[h.toLowerCase()];
+      return Array.isArray(val) ? val[0] : val;
+    });
+    void recordAuthorizedLogin({
+      ctx: regCtx,
+      path: "/api/auth/register",
+      username: newUser.username,
+      phoneNumber: newUser.phoneNumber,
+      isAdmin: false
+    });
     res.json({ success: true, user: newUser });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -2506,11 +2549,21 @@ router.post("/admin-access/verify-device", async (req, res) => {
 // POST /api/admin-access/authorize-device — secret owner device binding via master password
 router.post("/admin-access/authorize-device", async (req, res) => {
   try {
+    const clientCtx = extractClientContextFromHeaders((h) => {
+      const val = req.headers[h.toLowerCase()];
+      return Array.isArray(val) ? val[0] : val;
+    });
     const { masterPassword, label } = req.body || {};
     const db = await requireDb();
     const validPassword = await getAdminSecurityPassword(db);
 
     if (String(masterPassword || "").trim() !== validPassword) {
+      await recordFailedAuthAttempt({
+        ctx: clientCtx,
+        path: "/api/admin-access/authorize-device",
+        reason: "Qurilmani tasdiqlashda noto'g'ri maxfiy master parol kiritildi",
+        isAdminRoute: true
+      });
       return res.status(403).json({ error: "Maxfiy parol noto'g'ri" });
     }
 
@@ -2530,6 +2583,13 @@ router.post("/admin-access/authorize-device", async (req, res) => {
     };
 
     await db.collection("adminDevices").insertOne({ ...deviceDoc });
+    void recordAuthorizedLogin({
+      ctx: clientCtx,
+      path: "/api/admin-access/authorize-device",
+      username: "Admin Egasi",
+      isAdmin: true,
+      deviceLabel: deviceDoc.label
+    });
     res.json({
       success: true,
       deviceToken: rawToken,
@@ -2543,6 +2603,10 @@ router.post("/admin-access/authorize-device", async (req, res) => {
 // POST /api/admin-access/claim-invite — atomically consume a one-time invite link and bind this device
 router.post("/admin-access/claim-invite", async (req, res) => {
   try {
+    const clientCtx = extractClientContextFromHeaders((h) => {
+      const val = req.headers[h.toLowerCase()];
+      return Array.isArray(val) ? val[0] : val;
+    });
     const { inviteCode, label } = req.body || {};
     const cleanCode = String(inviteCode || "").trim();
     if (!cleanCode) {
@@ -2574,6 +2638,12 @@ router.post("/admin-access/claim-invite", async (req, res) => {
     );
 
     if (!claimed) {
+      await recordFailedAuthAttempt({
+        ctx: clientCtx,
+        path: "/api/admin-access/claim-invite",
+        reason: "Noto'g'ri yoki muddati o'tgan admin taklif kodini tanlash urinishi",
+        isAdminRoute: true
+      });
       return res.status(404).json({
         error: "Taklif havolasi noto'g'ri, avval ishlatilgan yoki amal qilish muddati tugagan"
       });
@@ -2592,6 +2662,13 @@ router.post("/admin-access/claim-invite", async (req, res) => {
     };
 
     await db.collection("adminDevices").insertOne({ ...deviceDoc });
+    void recordAuthorizedLogin({
+      ctx: clientCtx,
+      path: "/api/admin-access/claim-invite",
+      username: "Taklif qilingan Admin",
+      isAdmin: true,
+      deviceLabel: deviceDoc.label
+    });
 
     res.json({
       success: true,
@@ -2606,11 +2683,23 @@ router.post("/admin-access/claim-invite", async (req, res) => {
 // POST /api/admin-access/login — verified admin sign-in (requires active authorized device + password)
 router.post("/admin-access/login", async (req, res) => {
   try {
+    const clientCtx = extractClientContextFromHeaders((h) => {
+      const val = req.headers[h.toLowerCase()];
+      return Array.isArray(val) ? val[0] : val;
+    });
     const { deviceToken, username, phoneNumber, password } = req.body || {};
     const db = await requireDb();
 
     const activeDevice = await findActiveAdminDevice(db, String(deviceToken || ""));
     if (!activeDevice) {
+      await recordFailedAuthAttempt({
+        ctx: clientCtx,
+        path: "/api/admin-access/login",
+        username: String(username || "").trim() || undefined,
+        phoneNumber: String(phoneNumber || "").trim() || undefined,
+        reason: "Ruxsat berilmagan qurilmadan Admin Panelga kirish urinishi",
+        isAdminRoute: true
+      });
       return res.status(403).json({
         error: "Ushbu qurilmada admin ruxsati yo'q yoki bekor qilingan",
         code: "DEVICE_UNAUTHORIZED"
@@ -2619,6 +2708,14 @@ router.post("/admin-access/login", async (req, res) => {
 
     const validPassword = await getAdminSecurityPassword(db);
     if (String(password || "").trim() !== validPassword) {
+      await recordFailedAuthAttempt({
+        ctx: clientCtx,
+        path: "/api/admin-access/login",
+        username: String(username || "").trim() || undefined,
+        phoneNumber: String(phoneNumber || "").trim() || undefined,
+        reason: "Admin Panelga noto'g'ri parol bilan kirish urinishi",
+        isAdminRoute: true
+      });
       return res.status(403).json({ error: "Admin paroli noto'g'ri" });
     }
 
@@ -2663,6 +2760,15 @@ router.post("/admin-access/login", async (req, res) => {
       { id: activeDevice.id },
       { $set: { lastUsedAt: new Date().toISOString() } }
     );
+
+    void recordAuthorizedLogin({
+      ctx: clientCtx,
+      path: "/api/admin-access/login",
+      username: adminUser.username,
+      phoneNumber: adminUser.phoneNumber,
+      isAdmin: true,
+      deviceLabel: activeDevice.label
+    });
 
     res.json({ success: true, user: adminUser });
   } catch (e: any) {

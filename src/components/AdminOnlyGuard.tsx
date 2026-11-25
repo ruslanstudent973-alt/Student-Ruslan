@@ -25,7 +25,8 @@ export const ADMIN_ONLY_VIEWS: ReadonlySet<View> = new Set<View>([
   'admin_custom_requests',
   'admin_auctions',
   'admin_seller_payouts',
-  'admin_access'
+  'admin_access',
+  'admin_security'
 ]);
 
 interface AdminAccessContextValue {

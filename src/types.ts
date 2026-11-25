@@ -447,6 +447,7 @@ export type View =
   | 'admin_vip'
   | 'admin_custom_requests'
   | 'admin_access'
+  | 'admin_security'
   | 'ai_assistant';
 
 export type Language = 'uz' | 'ru' | 'en';

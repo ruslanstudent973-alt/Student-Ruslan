@@ -30,6 +30,7 @@ import {
 } from './components/WorkspaceViews';
 import { VipSubscribeModal, AdminVipManagementView } from './components/VipComponents';
 import { AdminAccessView } from './components/AdminAccessView';
+import { AdminSecurityView } from './components/AdminSecurityView';
 import { AdminAccessProvider, withAdminOnly } from './components/AdminOnlyGuard';
 import {
   AiAssistantView,
@@ -77,6 +78,7 @@ const ProtectedAdminSupportView = withAdminOnly(AdminSupportView, { permission: 
 const ProtectedAdminVipManagementView = withAdminOnly(AdminVipManagementView, { permission: 'admin_only' });
 const ProtectedAdminCustomRequestsView = withAdminOnly(AdminCustomRequestsView, { permission: 'admin_only' });
 const ProtectedAdminAccessView = withAdminOnly(AdminAccessView, { permission: 'admin_only' });
+const ProtectedAdminSecurityView = withAdminOnly(AdminSecurityView, { permission: 'admin_only' });
 const ProtectedAdminAuctionsView = withAdminOnly(AdminAuctionsView, { permission: 'admin_only' });
 const ProtectedAdminSellerPayoutsView = withAdminOnly(SellerPayoutsAdminView, { permission: 'admin_only' });
 const ProtectedAdminTayyorBozorView = withAdminOnly(AdminTayyorBozorView, { permission: 'admin_only' });
@@ -264,6 +266,7 @@ const App: React.FC = () => {
   const [pendingSellerPayoutActionsCount, setPendingSellerPayoutActionsCount] = useState<number>(0);
   const [pendingResaleCount, setPendingResaleCount] = useState<number>(0);
   const [pendingAffiliatePayoutsCount, setPendingAffiliatePayoutsCount] = useState<number>(0);
+  const [securityAttacks24h, setSecurityAttacks24h] = useState<number>(0);
   const [pendingDeepLinkProductId, setPendingDeepLinkProductId] = useState<string | null>(null);
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const [isVipModalOpen, setIsVipModalOpen] = useState(false);
@@ -321,6 +324,48 @@ const App: React.FC = () => {
       setPendingDeepLinkProductId(deepId);
     }
   }, []);
+
+  // Silent, non-blocking site visit audit logging (zero impact on storefront UX)
+  useEffect(() => {
+    try {
+      const payload = {
+        path: window.location.pathname || '/',
+        username: currentUser?.username || undefined,
+        phoneNumber: currentUser?.phoneNumber || undefined,
+        referrer: document.referrer || undefined
+      };
+      void fetch('/api/security/visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true
+      }).catch(() => {});
+    } catch {}
+  }, [currentUser?.telegramId]);
+
+  // Silently fetch 24h security alert badge count for authorized admin devices
+  useEffect(() => {
+    if (!currentUser?.isAdmin) {
+      setSecurityAttacks24h(0);
+      return;
+    }
+    const token = readStoredAdminDeviceToken();
+    if (!token) return;
+    let active = true;
+    void fetch('/api/security/overview', {
+      headers: { 'X-Admin-Device-Token': token }
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.summary && typeof data.summary.attacks24h === 'number') {
+          setSecurityAttacks24h(data.summary.attacks24h);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.isAdmin, currentUser?.telegramId]);
 
   useEffect(() => {
     if (!themeHydrated) return;
@@ -808,10 +853,10 @@ const App: React.FC = () => {
 
   if (currentView === 'loading') {
     return (
-      <MotionConfig reducedMotion="user">
+      <>
         <GlobalAmbientCanvas />
         <LoadingView onRetry={() => fetchData()} />
-      </MotionConfig>
+      </>
     );
   }
 
@@ -1184,6 +1229,7 @@ const App: React.FC = () => {
             pendingSellerPayoutActionsCount={pendingSellerPayoutActionsCount}
             pendingResaleCount={pendingResaleCount}
             pendingAffiliatePayoutsCount={pendingAffiliatePayoutsCount}
+            securityAttacks24h={securityAttacks24h}
           />
         )}
 
@@ -1414,6 +1460,16 @@ const App: React.FC = () => {
             onUnauthorizedBack={() => navigate('profile')}
             notify={notify}
             safeFetchJSON={safeFetchJSON}
+          />
+        )}
+        {currentView === 'admin_security' && (
+          <ProtectedAdminSecurityView
+            adminUser={currentUser}
+            onBack={() => navigate('profile')}
+            onUnauthorizedBack={() => navigate('profile')}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+            onAlertsCountChange={setSecurityAttacks24h}
           />
         )}
         {currentView === 'admin_auctions' && (
