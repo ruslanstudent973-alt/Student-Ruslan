@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { triggerPushPermissionPrompt } from './SmartPwaManager';
 import {
   Gavel,
   Crown,
@@ -357,6 +358,7 @@ export const LiveAuctionView: React.FC<LiveAuctionViewProps> = ({
       } else {
         notify(`Tabriklaymiz! ${formatUzs(cleanAmount)} stavkangiz qabul qilindi`, 'success');
       }
+      triggerPushPermissionPrompt('bid');
     } catch (err: any) {
       notify(err?.message || "Stavka qo'yishda xatolik yuz berdi", 'error');
       fetchActiveAuctions(true);
@@ -999,6 +1001,7 @@ export const MyAuctionsView: React.FC<MyAuctionsViewProps> = ({
         })
       });
       notify(`Qayta stavka qo'yildi: ${formatUzs(nextAmount)}! Endi siz yetakchisiz`, 'success');
+      triggerPushPermissionPrompt('bid');
       await loadMyAuctions(true);
     } catch (err: any) {
       notify(err?.message || "Qayta stavka qo'yishda xatolik", 'error');

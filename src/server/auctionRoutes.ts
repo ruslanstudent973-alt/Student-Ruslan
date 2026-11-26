@@ -1,6 +1,7 @@
 import express, { Request } from "express";
 import crypto from "crypto";
 import { Db } from "mongodb";
+import { sendWebPushToUsers } from "../lib/webPush";
 
 export type AuctionStatus =
   | "PENDING_APPROVAL"
@@ -953,6 +954,52 @@ export function registerAuctionRoutes(
 
       await db.collection("bids").insertOne(newBid);
       const latestBids = await fetchLatestBidsForAuction(db, auctionId, 10);
+
+      // Fire-and-forget Web Push: notify previous leader when outbid + 10-min ending alert
+      void (async () => {
+        try {
+          const prevLeaderId = String(existing.highestBidderId || "").trim();
+          if (prevLeaderId && prevLeaderId !== canonicalUserId) {
+            await sendWebPushToUsers([prevLeaderId], {
+              title: "⚡ Auksionda yangi stavka!",
+              body: `${updatedDoc.title}: ${rawAmount.toLocaleString("en-US")} so'm stavka qo'yildi. Oxirgi stavkani boy bermang!`,
+              url: "/?view=live_auction",
+              tag: `yuyu-auction-outbid-${auctionId}`,
+            });
+          }
+
+          if (remainingMs <= 10 * 60 * 1000 && !(updatedDoc as any).ending10mNotifiedAt) {
+            const claimed = await db.collection("auctions").findOneAndUpdate(
+              { id: auctionId, ending10mNotifiedAt: { $exists: false } },
+              { $set: { ending10mNotifiedAt: nowIso } },
+              { returnDocument: "after" }
+            );
+            if (claimed) {
+              const allBidUsers = await db
+                .collection("bids")
+                .find({ auctionId }, { projection: { userId: 1 } })
+                .toArray();
+              const ids = Array.from(
+                new Set(
+                  allBidUsers
+                    .map((b: any) => String(b?.userId || "").trim())
+                    .filter(Boolean)
+                )
+              );
+              if (ids.length > 0) {
+                await sendWebPushToUsers(ids, {
+                  title: "⏳ Auksion yakunlanmoqda!",
+                  body: `⏳ Auksion tugashiga 10 daqiqa qoldi! Oxirgi stavkani boy bermang — ${updatedDoc.title}`,
+                  url: "/?view=live_auction",
+                  tag: `yuyu-auction-ending-${auctionId}`,
+                });
+              }
+            }
+          }
+        } catch {
+          // Non-blocking push notification
+        }
+      })();
 
       res.json({
         success: true,

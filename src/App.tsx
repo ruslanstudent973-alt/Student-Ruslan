@@ -12,6 +12,7 @@ import {
   LoadingView, HomeView, CatalogView, SearchView, DetailView
 } from './components/StorefrontViews';
 import { AuthView } from './components/AuthView';
+import { SmartPwaManager, triggerPushPermissionPrompt } from './components/SmartPwaManager';
 import { VideoReelsView } from './components/VideoReelsView';
 import {
   FloatingPhotoRequestButton,
@@ -517,11 +518,16 @@ const App: React.FC = () => {
           return;
         }
       }
-      if (window.location.pathname === '/auction') {
+      const queryView = (params.get('view') || '').trim().toLowerCase();
+      if (window.location.pathname === '/auction' || queryView === 'live_auction' || queryView === 'auction') {
         setCurrentView('auction');
         return;
       }
       if (currentUser) {
+        if (queryView === 'orders') {
+          setCurrentView('orders');
+          return;
+        }
         if (pendingDeepLinkProductId) {
           const found = allProducts.find((p) => p.id === pendingDeepLinkProductId);
           if (found) {
@@ -539,7 +545,9 @@ const App: React.FC = () => {
           setCurrentView('home');
         }
       } else {
-        if (window.location.pathname === '/tayyor-bozor') {
+        if (queryView === 'orders') {
+          setReturnAfterAuthView('orders');
+        } else if (window.location.pathname === '/tayyor-bozor') {
           setReturnAfterAuthView('tayyor_bozor');
         }
         setCurrentView('auth');
@@ -610,8 +618,12 @@ const App: React.FC = () => {
     }
 
     sendTelegramNotification(
-      `🆕 YUYU Shop foydalanuvchi kirdi:\n👤 Ism: ${savedUser.username}\n📱 Tel: ${savedUser.phoneNumber || savedUser.telegramId}\n👑 Admin: ${savedUser.isAdmin ? 'Ha' : "Yo'q"}`
+      `🆕 YUYU Shop foydalanuvchi kirdi:\n👤 Ism: ${savedUser.username}\n📱 Tel: ${savedUser.phoneNumber || savedUser.email || savedUser.telegramId}\n👑 Admin: ${savedUser.isAdmin ? 'Ha' : "Yo'q"}`
     );
+
+    window.setTimeout(() => {
+      triggerPushPermissionPrompt('login');
+    }, 1800);
   };
 
   const processPayment = async (
@@ -690,6 +702,7 @@ const App: React.FC = () => {
       notify("To'lov yuborildi, tekshirilmoqda", 'success');
       setCurrentView('receipt');
       fetchData();
+      triggerPushPermissionPrompt('order');
 
       sendTelegramNotification(
         `💸 *YUYU Shop Yangi To'lov*\n📦 Tovar: ${savedOrder.productName}\n💰 Narx: ${savedOrder.price.toLocaleString()} so'm\n👤 Mijoz: ${currentUser.username}\n📍 Manzil: ${address}\n🆔 Buyurtma: ${savedOrder.id}`
@@ -771,9 +784,12 @@ const App: React.FC = () => {
         );
       }
       const stageMeta = getCargoStageMeta(cargoStatus);
-      if (res?.telegramNotified) {
+      const channels: string[] = [];
+      if (res?.telegramNotified) channels.push('Telegram');
+      if (Number(res?.pushNotifiedCount) > 0) channels.push(`Web Push (${res.pushNotifiedCount})`);
+      if (channels.length > 0) {
         notify(
-          `Kargo bosqichi yangilandi: ${stageMeta.label} · Telegram xabar yuborildi`,
+          `Kargo bosqichi yangilandi: ${stageMeta.label} · ${channels.join(' + ')} yuborildi`,
           'success'
         );
       } else {
@@ -916,6 +932,7 @@ const App: React.FC = () => {
               safeFetchJSON={safeFetchJSON}
             />
           </div>
+          <SmartPwaManager currentUser={null} notify={notify} />
           <ToastStack notifications={notifications} />
         </div>
       </MotionConfig>
@@ -937,6 +954,7 @@ const App: React.FC = () => {
           notify={notify}
           safeFetchJSON={safeFetchJSON}
         />
+        <SmartPwaManager currentUser={null} notify={notify} />
         <ToastStack notifications={notifications} />
       </MotionConfig>
     );
@@ -1604,6 +1622,7 @@ const App: React.FC = () => {
         notify={notify}
         safeFetchJSON={safeFetchJSON}
       />
+      <SmartPwaManager currentUser={currentUser} notify={notify} />
       <ToastStack notifications={notifications} />
     </div>
     </AdminAccessProvider>

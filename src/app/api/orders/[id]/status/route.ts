@@ -10,6 +10,7 @@ import {
   normalizeCargoStage,
   toIsoStringOrNull,
 } from "@/lib/cargoStages";
+import { sendWebPushToUsers } from "@/lib/webPush";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -386,32 +387,55 @@ async function handleStatusUpdate(
 
     const serialized = serializeOrderWithCargo(updatedDoc);
 
-    // Notify customer via Telegram Bot API when cargo stage is updated
+    // Notify customer via Telegram Bot API + Web Push (all user devices) when cargo stage is updated
     let telegramNotified = false;
     let telegramReason: string | undefined;
+    let pushNotifiedCount = 0;
 
     if (hasCargoStatusInput) {
       const stageMeta = getCargoStageMeta(nextStage);
       const customerTelegramId = await resolveCustomerTelegramId(updatedDoc);
-      if (customerTelegramId) {
-        const tgResult = await sendTelegramCargoAlert({
-          chatId: customerTelegramId,
-          orderId: serialized.id,
-          productName: String(serialized.productName || ""),
-          stageLabel: stageMeta.label,
-          trackingCode: serialized.trackingCode || undefined,
-        });
-        telegramNotified = tgResult.sent;
-        telegramReason = tgResult.reason;
-      } else {
-        telegramReason = "Mijozning Telegram ID raqami bog'lanmagan";
-      }
+      const pushTargets = Array.from(
+        new Set(
+          [
+            String(serialized.userId || "").trim(),
+            String(serialized.telegramId || "").trim(),
+            customerTelegramId || "",
+          ].filter(Boolean)
+        )
+      );
+
+      const [tgResult, pushResult] = await Promise.all([
+        customerTelegramId
+          ? sendTelegramCargoAlert({
+              chatId: customerTelegramId,
+              orderId: serialized.id,
+              productName: String(serialized.productName || ""),
+              stageLabel: stageMeta.label,
+              trackingCode: serialized.trackingCode || undefined,
+            })
+          : Promise.resolve({
+              sent: false,
+              reason: "Mijozning Telegram ID raqami bog'lanmagan",
+            }),
+        sendWebPushToUsers(pushTargets, {
+          title: "🚚 Yuk mashinasi yo'lda!",
+          body: `🚚 Yuk mashinasi yo'lda! Buyurtmangiz (#${serialized.id}) yangi bosqichga o'tdi: ${stageMeta.label}`,
+          url: "/?view=orders",
+          tag: `yuyu-cargo-${serialized.id}`,
+        }),
+      ]);
+
+      telegramNotified = tgResult.sent;
+      telegramReason = tgResult.reason;
+      pushNotifiedCount = pushResult.sent;
     }
 
     return NextResponse.json({
       success: true,
       order: serialized,
       telegramNotified,
+      pushNotifiedCount,
       ...(telegramReason ? { telegramReason } : {}),
     });
   } catch (err: any) {

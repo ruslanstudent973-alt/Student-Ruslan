@@ -10,10 +10,15 @@ import { detectThreatFromRequest, extractClientContext, isLoopbackIp } from "@/l
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-  // Never intercept Next.js internal static chunks, images, or SEO metadata files
+  // Never intercept Next.js internal static chunks, PWA assets, images, or SEO metadata files
   if (
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/images/") ||
+    pathname.startsWith("/icons/") ||
+    pathname === "/manifest.json" ||
+    pathname === "/sw.js" ||
+    pathname === "/apple-touch-icon.png" ||
+    pathname === "/icon.svg" ||
     pathname === "/favicon.ico" ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml" ||

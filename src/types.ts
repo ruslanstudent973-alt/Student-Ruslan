@@ -114,6 +114,8 @@ export interface User {
   username: string;
   telegramId: string;
   phoneNumber?: string;
+  googleId?: string;
+  email?: string;
   city?: string;
   isAdmin: boolean;
   avatar?: string;

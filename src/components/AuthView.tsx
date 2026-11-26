@@ -33,6 +33,7 @@ import {
   Truck,
   Search
 } from 'lucide-react';
+import { GoogleSignInButton } from './GoogleSignInButton';
 import { soundEngine } from '../utils/soundEngine';
 import { User, AdminDevice } from '../types';
 import { LandingThreeStage } from './LandingThreeStage';
@@ -1166,6 +1167,30 @@ export const AuthView: React.FC<AuthViewProps> = ({
                             <span>Kabinetga kirish</span>
                           </button>
 
+                          <div className="relative flex items-center gap-3 py-0.5">
+                            <div className="h-px flex-1 bg-slate-200/90" />
+                            <span className="text-xs font-medium text-slate-400 select-none">
+                              yoki
+                            </span>
+                            <div className="h-px flex-1 bg-slate-200/90" />
+                          </div>
+
+                          <GoogleSignInButton
+                            mode="login"
+                            disabled={loading || isRegisterFace}
+                            safeFetchJSON={safeFetchJSON}
+                            onSuccess={(user) => {
+                              playSound();
+                              setErrorMsg('');
+                              setErrorAction(null);
+                              onAuthSuccess(user);
+                            }}
+                            onError={(msg) => {
+                              setErrorMsg(msg);
+                              setErrorAction(null);
+                            }}
+                          />
+
                           <p className="text-xs text-center text-slate-600 pt-1">
                             Hali hisobingiz yo&apos;qmi?{' '}
                             <button
@@ -1337,6 +1362,30 @@ export const AuthView: React.FC<AuthViewProps> = ({
                             )}
                             <span>Hisob yaratish va kirish</span>
                           </button>
+
+                          <div className="relative flex items-center gap-3 py-0.5">
+                            <div className="h-px flex-1 bg-slate-200/90" />
+                            <span className="text-xs font-medium text-slate-400 select-none">
+                              yoki
+                            </span>
+                            <div className="h-px flex-1 bg-slate-200/90" />
+                          </div>
+
+                          <GoogleSignInButton
+                            mode="register"
+                            disabled={loading || !isRegisterFace}
+                            safeFetchJSON={safeFetchJSON}
+                            onSuccess={(user) => {
+                              playSound();
+                              setErrorMsg('');
+                              setErrorAction(null);
+                              onAuthSuccess(user);
+                            }}
+                            onError={(msg) => {
+                              setErrorMsg(msg);
+                              setErrorAction(null);
+                            }}
+                          />
 
                           <p className="text-xs text-center text-slate-600">
                             Avval ro&apos;yxatdan o&apos;tganmisiz?{' '}
