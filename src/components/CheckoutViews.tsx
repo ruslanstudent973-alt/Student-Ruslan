@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ShoppingCart, ChevronLeft, Trash2, CreditCard, Package, Truck, MapPin,
   Copy, UploadCloud, ShieldCheck, Loader2, Check, Receipt, Clock, CheckCircle2, ArrowRight,
-  Crown, Wallet, Zap, XCircle, RefreshCw
+  Crown, Wallet, Zap, XCircle, RefreshCw, AlertCircle, X, Upload
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Order, Product, User, View, ResaleListing } from '../types';
@@ -31,7 +31,13 @@ export const CartView: React.FC<{
   onRemove: (id: string) => void;
   onCheckout: (item: any) => void;
   onProductClick: (product: Product) => void;
-  onAddToCart: (product: Product, size: string) => void;
+  onAddToCart: (
+    product: Product,
+    size: string,
+    quantity?: number,
+    selectedColor?: string,
+    selectedColorImage?: string
+  ) => void;
   onBack: () => void;
   playSound: () => void;
   currentUser?: User | null;
@@ -124,6 +130,8 @@ export const CartView: React.FC<{
                   const regularPrice = getRegularPriceUzs(item.product);
                   const itemPrice = getEffectiveProductPriceUzs(item.product, currentUser);
                   const hasVipDiscount = itemPrice < regularPrice;
+                  const resolvedThumb = item.selectedColorImage || item.product.images?.[0];
+                  const resolvedSize = item.selectedSize || item.size || 'Standard';
                   return (
                     <motion.div
                       key={item.id}
@@ -137,20 +145,30 @@ export const CartView: React.FC<{
                     >
                       <div className="w-24 h-24 rounded-2xl bg-white/75 dark:bg-slate-800/75 border border-white/80 dark:border-slate-700/60 p-2 shrink-0 flex items-center justify-center overflow-hidden">
                         <SafeImage
-                          src={item.product.images?.[0]}
-                          alt={item.product.name}
+                          src={resolvedThumb}
+                          alt={item.selectedColor ? `${item.product.name} - ${item.selectedColor}` : item.product.name}
                           className="w-full h-full object-contain"
                         />
                       </div>
-                      <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex-1 min-w-0 space-y-1.5">
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {item.product.category} · Variant: {item.size}
+                          {item.product.category}
                           {(item.quantity || 1) > 1 ? ` · ${item.quantity} dona` : ''}
                         </p>
                         <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
                           {item.product.name}
                         </h3>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {item.selectedColor && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800/70 text-[11px] font-semibold text-[#1D4ED8] dark:text-blue-300">
+                              <span>Rang: {item.selectedColor}</span>
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                            <span>Razmer: {resolvedSize}</span>
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
                           {hasVipDiscount && (
                             <span className="font-mono tabular-nums text-xs text-slate-400 line-through">
                               {(regularPrice * (item.quantity || 1)).toLocaleString()} so'm
@@ -255,13 +273,29 @@ export const PaymentView: React.FC<{
   t: any;
   product: Product;
   quantity?: number;
+  selectedSize?: string;
+  selectedColor?: string;
+  selectedColorImage?: string;
   onConfirm: (receipt: string, addr: string, finalPrice: number, usedPromo?: string, cashbackUsed?: number) => void;
   onBack: () => void;
   playSound: () => void;
   promoCodes: any[];
   notify: (msg: string, type?: 'success' | 'error' | 'info') => void;
   currentUser?: User | null;
-}> = ({ t, product, quantity = 1, onConfirm, onBack, playSound, promoCodes, notify, currentUser }) => {
+}> = ({
+  t,
+  product,
+  quantity = 1,
+  selectedSize,
+  selectedColor,
+  selectedColorImage,
+  onConfirm,
+  onBack,
+  playSound,
+  promoCodes,
+  notify,
+  currentUser
+}) => {
   const safeQty = Math.max(1, Math.round(quantity || 1));
   const [receipt, setReceipt] = useState<string | null>(null);
   const [address, setAddress] = useState(PICKUP_ADDRESS);
@@ -289,8 +323,6 @@ export const PaymentView: React.FC<{
   const regularPrice = unitRegularPrice * safeQty;
   const basePrice = unitBasePrice * safeQty;
   const vipPriceSavings = Math.max(0, regularPrice - basePrice);
-  const totalWeightKg = Number(((product.weight || 0) * safeQty).toFixed(2));
-  const cargoCost = Math.round(totalWeightKg * CARGO_RATE_USD * USD_RATE);
 
   useEffect(() => {
     if (deliveryMethod === 'pickup') {
@@ -321,7 +353,7 @@ export const PaymentView: React.FC<{
 
   const subtotalBeforeCashback = Math.max(
     0,
-    Math.round(basePrice * (1 - discount) + cargoCost + deliveryPrice)
+    Math.round(basePrice * (1 - discount) + deliveryPrice)
   );
   const availableCashback = vipInfo.cashbackBalance;
   const cashbackApplied =
@@ -438,11 +470,32 @@ export const PaymentView: React.FC<{
         >
           <ChevronLeft size={18} />
         </motion.button>
-        <div>
+        {selectedColorImage && (
+          <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-[#2563EB]/40 bg-white dark:bg-slate-800 shrink-0 shadow-sm">
+            <SafeImage
+              src={selectedColorImage}
+              alt={selectedColor || product.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+        <div className="space-y-1">
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
             {t.paymentTitle}
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{product.name}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-slate-500 dark:text-slate-400">{product.name}</p>
+            {selectedColor && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800/70 text-[11px] font-semibold text-[#1D4ED8] dark:text-blue-300">
+                Rang: {selectedColor}
+              </span>
+            )}
+            {selectedSize && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                Razmer: {selectedSize}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -724,13 +777,17 @@ export const PaymentView: React.FC<{
                   </span>
                 </div>
               )}
-              <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                <span>Kargo ({totalWeightKg} kg)</span>
-                <span className="font-mono tabular-nums font-medium text-slate-900 dark:text-white">
-                  {cargoCost.toLocaleString()} so'm
-                </span>
-              </div>
-              {discount > 0 && (
+               {/* Separate Cargo Notice Card */}
+               <div className="yuyu-glass-subtle p-4 rounded-2xl flex items-start gap-3 border border-blue-200/50 dark:border-blue-900/50 text-xs text-slate-700 dark:text-slate-300">
+                 <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-[#0F294A] dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+                   <Package size={16} />
+                 </div>
+                 <p className="leading-relaxed">
+                   Kargo to'lovi (kg bo'yicha) tovar Xitoy omboriga yetib kelib, trek-kod bilan tortilgandan so'ng alohida hisoblanadi va to'lanadi.
+                 </p>
+               </div>
+
+               {discount > 0 && (
                 <div className="flex justify-between text-emerald-700 dark:text-emerald-400">
                   <span>Promo-kod ({Math.round(discount * 100)}%)</span>
                   <span className="font-mono tabular-nums font-semibold">
@@ -856,6 +913,22 @@ export const ReceiptView: React.FC<{
                 {order.productName}
               </span>
             </div>
+            <div className="flex justify-between gap-4 items-center">
+              <span className="text-slate-500">Tanlangan variant</span>
+              <span className="inline-flex items-center gap-2 font-medium text-right text-slate-900 dark:text-white">
+                {order.selectedColorImage && (
+                  <img
+                    src={order.selectedColorImage}
+                    alt={order.selectedColor || 'Rang'}
+                    className="w-7 h-7 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+                  />
+                )}
+                <span>
+                  {order.selectedColor ? `Rang: ${order.selectedColor} | ` : ''}
+                  Razmer: {order.selectedSize || order.size || 'Standard'}
+                </span>
+              </span>
+            </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Manzil</span>
               <span className="font-medium text-right text-slate-900 dark:text-white max-w-[220px]">
@@ -909,6 +982,183 @@ export const ReceiptView: React.FC<{
   );
 };
 
+const CargoPaymentModal: React.FC<{
+  order: Order;
+  currentUser: User | null;
+  onClose: () => void;
+  onSubmitted: (orderId: string, receiptUrl: string) => void;
+  playSound: () => void;
+  notify?: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  safeFetchJSON?: (url: string, options?: RequestInit) => Promise<any>;
+}> = ({ order, currentUser, onClose, onSubmitted, playSound, notify, safeFetchJSON }) => {
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleFile = async (file: File) => {
+    playSound();
+    if (!file.type.startsWith('image/')) {
+      notify?.("Iltimos, faqat rasm faylini yuklang", 'error');
+      return;
+    }
+    setUploading(true);
+    notify?.("Kargo cheki yuklanmoqda...", 'info');
+    try {
+      const url = await uploadMediaSmart(file, { folder: 'receipts', maxDim: 1400, quality: 0.84 });
+      setReceiptUrl(url);
+      notify?.("Chek yuklandi", 'success');
+    } catch (err: any) {
+      notify?.(err?.message || "Chekni yuklashda xatolik", 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!receiptUrl || submitting) return;
+    playSound();
+    setSubmitting(true);
+    try {
+      if (safeFetchJSON) {
+        await safeFetchJSON(`/api/orders/${encodeURIComponent(order.id)}/cargo-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'submit_receipt',
+            cargoReceiptUrl: receiptUrl,
+            userId: currentUser?.telegramId || currentUser?.phoneNumber || ''
+          })
+        });
+      }
+      onSubmitted(order.id, receiptUrl);
+      notify?.("Kargo to'lov cheki adminga yuborildi", 'success');
+      onClose();
+    } catch (err: any) {
+      notify?.(err?.message || "Xatolik yuz berdi", 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        className="w-full max-w-lg yuyu-glass-strong rounded-3xl p-6 sm:p-7 space-y-6 shadow-2xl border border-white/20 relative"
+      >
+        <div className="flex items-center justify-between pb-4 border-b border-slate-200/60 dark:border-slate-800">
+          <div>
+            <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white">
+              Kargo to'lovini amalga oshirish
+            </h3>
+            <p className="text-xs text-slate-500 font-mono">
+              Buyurtma: {order.id} · Vazni: {order.cargoWeightKg || 0} kg
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              playSound();
+              onClose();
+            }}
+            className="p-2 rounded-xl yuyu-glass-subtle text-slate-500 hover:text-slate-900 dark:hover:text-white"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="bg-gradient-to-br from-[#0F294A] via-[#133560] to-[#0B1F3B] rounded-2xl p-5 text-white space-y-3 relative overflow-hidden shadow-lg border border-white/15">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-blue-200">Kargo to'lov kartasi</span>
+            <span className="font-display text-xs font-bold tracking-wider">UZCARD</span>
+          </div>
+          <p className="text-lg font-mono tabular-nums tracking-wider">{CARD_NUMBER}</p>
+          <div className="flex items-center justify-between pt-2 border-t border-white/15">
+            <span className="text-xs font-medium text-slate-200">{CARD_OWNER}</span>
+            <button
+              type="button"
+              onClick={() => {
+                playSound();
+                navigator.clipboard.writeText(CARD_NUMBER);
+                notify?.("Karta raqami nusxalandi", 'success');
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-[11px] font-semibold"
+            >
+              <Copy size={12} />
+              <span>Nusxalash</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="yuyu-glass p-4 rounded-2xl flex items-center justify-between text-sm">
+          <span className="text-slate-600 dark:text-slate-400 font-medium">To'lanishi kerak:</span>
+          <span className="font-mono tabular-nums text-xl font-bold text-[#0F294A] dark:text-blue-400">
+            {(order.cargoFeeUzs || 0).toLocaleString()} so'm
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            Kargo to'lov cheki rasmini yuklang
+          </label>
+          <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-2xl cursor-pointer transition-colors relative overflow-hidden border-slate-300 dark:border-slate-700 bg-white/40 dark:bg-slate-900/40 hover:bg-white/70">
+            {receiptUrl ? (
+              <div className="absolute inset-0 group">
+                <img src={receiptUrl} alt="Chek" className="h-full w-full object-contain bg-slate-950/5" />
+                <div className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 text-white text-xs font-semibold">
+                  <Upload size={16} />
+                  <span>Almashtirish</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center px-4 space-y-1.5">
+                {uploading ? (
+                  <Loader2 size={24} className="mx-auto text-[#2563EB] animate-spin" />
+                ) : (
+                  <Upload size={22} className="mx-auto text-slate-400" />
+                )}
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Chek rasmini shu yerga tashlang yoki tanlang
+                </p>
+              </div>
+            )}
+            <input
+              type="file"
+              className="hidden"
+              accept="image/*"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+            />
+          </label>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-3 yuyu-glass-subtle rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300"
+          >
+            Bekor qilish
+          </button>
+          <button
+            type="button"
+            disabled={!receiptUrl || submitting || uploading}
+            onClick={handleSubmit}
+            className="flex-1 py-3 bg-[#2563EB] hover:bg-blue-600 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-md shadow-blue-600/20"
+          >
+            {submitting ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+            <span>Chekni yuborish</span>
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 export const OrdersView: React.FC<{
   t: any;
   orders: Order[];
@@ -919,6 +1169,8 @@ export const OrdersView: React.FC<{
   notify?: (msg: string, type?: 'success' | 'error' | 'info') => void;
   safeFetchJSON?: (url: string, options?: RequestInit) => Promise<any>;
   onRefreshOrders?: () => Promise<void> | void;
+  onPayCargo?: (orderId: string, receiptUrl: string) => void;
+  playSound?: () => void;
 }> = ({
   t,
   orders,
@@ -928,10 +1180,13 @@ export const OrdersView: React.FC<{
   setReceiptOrder,
   notify,
   safeFetchJSON,
-  onRefreshOrders
+  onRefreshOrders,
+  onPayCargo,
+  playSound = () => {}
 }) => {
   const [myResales, setMyResales] = useState<ResaleListing[]>([]);
   const [resaleModalOrder, setResaleModalOrder] = useState<Order | null>(null);
+  const [cargoPayModalOrder, setCargoPayModalOrder] = useState<Order | null>(null);
   const [refreshingCargo, setRefreshingCargo] = useState(false);
 
   const onRefreshRef = useRef(onRefreshOrders);
@@ -1081,19 +1336,28 @@ export const OrdersView: React.FC<{
                     </div>
 
                     <div className="flex items-start gap-4">
-                      {o.receiptImage && (
+                      {(o.selectedColorImage || o.receiptImage) && (
                         <img
-                          src={o.receiptImage}
-                          alt="Chek"
+                          src={o.selectedColorImage || o.receiptImage}
+                          alt={o.selectedColor || 'Buyurtma'}
                           className="w-16 h-16 rounded-xl object-cover border border-white/70 dark:border-slate-700 shrink-0"
                         />
                       )}
-                      <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex-1 min-w-0 space-y-1.5">
                         <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
                           {o.productName}
                         </h3>
-                        <p className="text-xs text-slate-500">Variant: {o.size}</p>
-                        <p className="font-mono tabular-nums text-lg font-bold text-[#0F294A] dark:text-blue-400 pt-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {o.selectedColor && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800/70 text-[11px] font-semibold text-[#1D4ED8] dark:text-blue-300">
+                              <span>Rang: {o.selectedColor}</span>
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                            <span>Razmer: {o.selectedSize || o.size || 'Standard'}</span>
+                          </span>
+                        </div>
+                        <p className="font-mono tabular-nums text-lg font-bold text-[#0F294A] dark:text-blue-400 pt-0.5">
                           {o.price.toLocaleString()} so'm
                         </p>
                         <div className="flex flex-wrap gap-2 pt-1">
@@ -1113,7 +1377,68 @@ export const OrdersView: React.FC<{
 
                     {/* Live China -> Uzbekistan Cargo Tracker with animated blue truck */}
                     {!isCancelled ? (
-                      <LiveCargoTracker order={o} />
+                      <div className="space-y-4">
+                        <LiveCargoTracker order={o} />
+
+                        {/* Separate Cargo Payment Status & Actions Block */}
+                        <div className="p-4 rounded-2xl bg-white/75 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800/80 space-y-3">
+                          <div className="flex items-center justify-between gap-2 text-xs font-semibold">
+                            <span className="text-slate-600 dark:text-slate-400">1) Tovar to'lovi:</span>
+                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                              <CheckCircle2 size={13} />
+                              <span>To'langan</span>
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-slate-600 dark:text-slate-400">2) Kargo to'lovi:</span>
+                            {(!o.cargoPaymentStatus || o.cargoPaymentStatus === 'pending_weighing') && (
+                              <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+                                <Clock size={13} />
+                                <span>Ombor tortishi kutilmoqda</span>
+                              </span>
+                            )}
+                            {o.cargoPaymentStatus === 'unpaid' && (
+                              <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-bold font-mono">
+                                <AlertCircle size={13} />
+                                <span>{(o.cargoFeeUzs || 0).toLocaleString()} so'm kutilmoqda</span>
+                              </span>
+                            )}
+                            {o.cargoPaymentStatus === 'verifying' && (
+                              <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                                <ShieldCheck size={13} />
+                                <span>Tekshirilmoqda</span>
+                              </span>
+                            )}
+                            {o.cargoPaymentStatus === 'paid' && (
+                              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-semibold">
+                                <CheckCircle2 size={13} />
+                                <span>To'langan ({o.cargoWeightKg || 0} kg)</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {o.cargoPaymentStatus === 'unpaid' && (
+                            <motion.button
+                              type="button"
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.97 }}
+                              onClick={() => {
+                                playSound();
+                                setCargoPayModalOrder(o);
+                              }}
+                              className="w-full py-2.5 px-4 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
+                            >
+                              <CreditCard size={14} />
+                              <span>Kargo pulini to'lash ({(o.cargoFeeUzs || 0).toLocaleString()} so'm)</span>
+                            </motion.button>
+                          )}
+                          {o.cargoPaymentStatus === 'verifying' && (
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Yuklagan kargo chekingiz admin tomonidan tekshirilmoqda. Tez orada tasdiqlanadi.
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     ) : (
                       <div className="rounded-2xl bg-red-50/80 dark:bg-red-950/30 border border-red-200/70 dark:border-red-900/50 px-4 py-3 text-xs text-red-700 dark:text-red-300">
                         Ushbu buyurtma bekor qilingan, kargo harakati to&apos;xtatilgan.
@@ -1216,7 +1541,7 @@ export const OrdersView: React.FC<{
         </StaggerGrid>
       )}
 
-      {/* 1-Click Resale Modal */}
+      {/* 1-Click Resale Modal & Cargo Payment Modal */}
       <AnimatePresence>
         {resaleModalOrder && currentUser && safeFetchJSON && notify && (
           <ResaleListingModal
@@ -1227,6 +1552,20 @@ export const OrdersView: React.FC<{
             onCreated={(createdListing) => {
               setMyResales((prev) => [createdListing, ...prev]);
             }}
+            notify={notify}
+            safeFetchJSON={safeFetchJSON}
+          />
+        )}
+        {cargoPayModalOrder && currentUser && (
+          <CargoPaymentModal
+            order={cargoPayModalOrder}
+            currentUser={currentUser}
+            onClose={() => setCargoPayModalOrder(null)}
+            onSubmitted={(orderId, receiptUrl) => {
+              if (onPayCargo) onPayCargo(orderId, receiptUrl);
+              setCargoPayModalOrder(null);
+            }}
+            playSound={() => {}}
             notify={notify}
             safeFetchJSON={safeFetchJSON}
           />

@@ -8,6 +8,16 @@ export interface IOrderStatusTimestamps {
   step4?: Date;
 }
 
+export interface IOrderItemVariant {
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  selectedColor?: string;
+  selectedColorImage?: string;
+  selectedSize?: string;
+}
+
 export interface IOrderDocument {
   id: string;
   userId: string;
@@ -16,11 +26,21 @@ export interface IOrderDocument {
   productId: string;
   productName: string;
   size: string;
+  selectedSize?: string;
+  selectedColor?: string;
+  selectedColorImage?: string;
+  items?: IOrderItemVariant[];
   price: number;
   status: "pending" | "verifying" | "paid" | "shipped" | "delivered" | "cancelled";
   trackNumber?: string;
   trackingCode?: string;
   cargoStatus: CargoStage;
+  cargoWeightKg?: number;
+  cargoRatePerKg?: number;
+  cargoFeeUzs?: number;
+  cargoPaymentStatus?: "pending_weighing" | "unpaid" | "verifying" | "paid";
+  cargoReceiptUrl?: string;
+  cargoMethod?: "avto" | "avia";
   statusTimestamps?: IOrderStatusTimestamps;
   date: string;
   timestamp: number;
@@ -42,6 +62,19 @@ const OrderStatusTimestampsSchema = new Schema<IOrderStatusTimestamps>(
     step2: { type: Date },
     step3: { type: Date },
     step4: { type: Date },
+  },
+  { _id: false }
+);
+
+const OrderItemVariantSchema = new Schema<IOrderItemVariant>(
+  {
+    productId: { type: String, default: "", trim: true },
+    productName: { type: String, default: "", trim: true },
+    quantity: { type: Number, default: 1, min: 1 },
+    price: { type: Number, default: 0, min: 0 },
+    selectedColor: { type: String, default: "", trim: true },
+    selectedColorImage: { type: String, default: "", trim: true },
+    selectedSize: { type: String, default: "", trim: true },
   },
   { _id: false }
 );
@@ -85,6 +118,25 @@ const OrderSchema = new Schema<IOrderDocument>(
       default: "Standard",
       trim: true,
     },
+    selectedSize: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    selectedColor: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    selectedColorImage: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    items: {
+      type: [OrderItemVariantSchema],
+      default: [],
+    },
     price: {
       type: Number,
       default: 0,
@@ -111,6 +163,35 @@ const OrderSchema = new Schema<IOrderDocument>(
       type: Number,
       enum: [1, 2, 3, 4],
       default: 1,
+    },
+    cargoWeightKg: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    cargoRatePerKg: {
+      type: Number,
+      default: 76800,
+      min: 0,
+    },
+    cargoFeeUzs: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    cargoPaymentStatus: {
+      type: String,
+      enum: ["pending_weighing", "unpaid", "verifying", "paid"],
+      default: "pending_weighing",
+    },
+    cargoReceiptUrl: {
+      type: String,
+      default: "",
+    },
+    cargoMethod: {
+      type: String,
+      enum: ["avto", "avia"],
+      default: "avto",
     },
     statusTimestamps: {
       type: OrderStatusTimestampsSchema,

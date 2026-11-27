@@ -198,7 +198,7 @@ export const LiveAuctionView: React.FC<LiveAuctionViewProps> = ({
   const [customAmount, setCustomAmount] = useState('');
   const [placingBid, setPlacingBid] = useState(false);
   const [antiSnipeNotice, setAntiSnipeNotice] = useState(false);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState<number>(0);
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [sellerQuota, setSellerQuota] = useState<UserSellerQuota | null>(null);
   const clockOffsetRef = useRef(0);
@@ -906,7 +906,7 @@ export const MyAuctionsView: React.FC<MyAuctionsViewProps> = ({
   const [confirmingReceiptId, setConfirmingReceiptId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rebiddingId, setRebiddingId] = useState<string | null>(null);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState<number>(0);
 
   const loadMyAuctions = useCallback(
     async (silent = false) => {

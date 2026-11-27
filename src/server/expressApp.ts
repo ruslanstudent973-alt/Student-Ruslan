@@ -650,7 +650,18 @@ async function loadAllDataFromDb(db: Db) {
       ? p.videos.map((vid: any, idx: number) =>
           isLargeDataUri(vid) ? `/api/media/product-video/${encodeURIComponent(p.id)}/${idx}` : vid
         )
-      : p.videos
+      : p.videos,
+    colorVariants: Array.isArray(p.colorVariants)
+      ? p.colorVariants
+          .filter((cv: any) => cv && typeof cv === "object" && cv.name && cv.imageUrl)
+          .map((cv: any, idx: number) => ({
+            name: String(cv.name).trim(),
+            imageUrl: isLargeDataUri(cv.imageUrl)
+              ? `/api/media/product-color/${encodeURIComponent(p.id)}/${idx}`
+              : String(cv.imageUrl)
+          }))
+      : [],
+    sizes: Array.isArray(p.sizes) ? p.sizes : []
   }));
 
   const sanitizedProductById = new Map<string, any>();
@@ -692,6 +703,11 @@ async function loadAllDataFromDb(db: Db) {
     return {
       ...o,
       cargoStatus: resolvedCargoStatus,
+      cargoWeightKg: Number(o.cargoWeightKg) || 0,
+      cargoRatePerKg: Number(o.cargoRatePerKg) || 76800,
+      cargoFeeUzs: Number(o.cargoFeeUzs) || 0,
+      cargoPaymentStatus: o.cargoPaymentStatus || "pending_weighing",
+      cargoMethod: o.cargoMethod || "avto",
       trackingCode: resolvedTracking,
       trackNumber: resolvedTracking || o.trackNumber || "",
       statusTimestamps: {
@@ -700,7 +716,10 @@ async function loadAllDataFromDb(db: Db) {
       },
       receiptImage: isLargeDataUri(o.receiptImage)
         ? `/api/media/order/${encodeURIComponent(o.id)}/receipt`
-        : o.receiptImage
+        : o.receiptImage,
+      cargoReceiptUrl: isLargeDataUri(o.cargoReceiptUrl)
+        ? `/api/media/order/${encodeURIComponent(o.id)}/cargo-receipt`
+        : (o.cargoReceiptUrl || "")
     };
   });
 
@@ -838,6 +857,21 @@ router.get("/media/product-video/:productId/:index", async (req, res) => {
   }
 });
 
+router.get("/media/product-color/:productId/:index", async (req, res) => {
+  try {
+    const db = await requireDb();
+    const prod = await db.collection("products").findOne(
+      { id: req.params.productId },
+      { projection: { colorVariants: 1 } }
+    );
+    const idx = Number(req.params.index) || 0;
+    const item = Array.isArray(prod?.colorVariants) ? prod.colorVariants[idx] : null;
+    return sendMediaValue(res, item?.imageUrl || null);
+  } catch {
+    return res.status(500).end();
+  }
+});
+
 router.get("/media/user/:userId/avatar", async (req, res) => {
   try {
     const db = await requireDb();
@@ -860,6 +894,19 @@ router.get("/media/order/:orderId/receipt", async (req, res) => {
       { projection: { receiptImage: 1 } }
     );
     return sendMediaValue(res, order?.receiptImage);
+  } catch {
+    return res.status(500).end();
+  }
+});
+
+router.get("/media/order/:orderId/cargo-receipt", async (req, res) => {
+  try {
+    const db = await requireDb();
+    const order = await db.collection("orders").findOne(
+      { id: req.params.orderId },
+      { projection: { cargoReceiptUrl: 1 } }
+    );
+    return sendMediaValue(res, order?.cargoReceiptUrl);
   } catch {
     return res.status(500).end();
   }
@@ -1309,6 +1356,26 @@ router.post("/products", async (req, res) => {
         return vid;
       });
     }
+    if (existingProd && Array.isArray(newProduct.colorVariants)) {
+      newProduct.colorVariants = newProduct.colorVariants.map((cv: any) => {
+        if (
+          cv &&
+          typeof cv.imageUrl === "string" &&
+          cv.imageUrl.startsWith("/api/media/product-color/")
+        ) {
+          const idxStr = cv.imageUrl.split("/").pop();
+          const idx = Number(idxStr);
+          if (
+            !Number.isNaN(idx) &&
+            Array.isArray(existingProd.colorVariants) &&
+            existingProd.colorVariants[idx]?.imageUrl
+          ) {
+            return { ...cv, imageUrl: existingProd.colorVariants[idx].imageUrl };
+          }
+        }
+        return cv;
+      });
+    }
 
     await db.collection("products").updateOne(
       { id: newProduct.id },
@@ -1353,7 +1420,15 @@ router.post("/products", async (req, res) => {
         ? newProduct.videos.map((vid: any, idx: number) =>
             isLargeDataUri(vid) ? `/api/media/product-video/${encodeURIComponent(newProduct.id)}/${idx}` : vid
           )
-        : newProduct.videos
+        : newProduct.videos,
+      colorVariants: Array.isArray(newProduct.colorVariants)
+        ? newProduct.colorVariants.map((cv: any, idx: number) => ({
+            name: String(cv?.name || "").trim(),
+            imageUrl: isLargeDataUri(cv?.imageUrl)
+              ? `/api/media/product-color/${encodeURIComponent(newProduct.id)}/${idx}`
+              : String(cv?.imageUrl || "")
+          }))
+        : []
     };
 
     res.json({ success: true, product: responseProduct });
@@ -1500,6 +1575,12 @@ router.post("/orders", async (req, res) => {
       telegramId: rawOrder.telegramId || rawOrder.userId || "",
       timestamp: createdTimestamp,
       cargoStatus: 1,
+      cargoWeightKg: 0,
+      cargoRatePerKg: 76800,
+      cargoFeeUzs: 0,
+      cargoPaymentStatus: "pending_weighing",
+      cargoReceiptUrl: "",
+      cargoMethod: "avto",
       trackingCode: initialTracking,
       trackNumber: initialTracking,
       statusTimestamps: {

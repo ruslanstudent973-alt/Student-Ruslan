@@ -7,6 +7,11 @@ export interface IProductSeller {
   description?: string;
 }
 
+export interface IProductColorVariant {
+  name: string;
+  imageUrl: string;
+}
+
 export interface IProductDocument {
   id: string;
   name: string;
@@ -20,6 +25,7 @@ export interface IProductDocument {
   images: string[];
   video?: string;
   videos?: string[];
+  colorVariants?: IProductColorVariant[];
   sizes: string[];
   rating: number;
   salesCount: number;
@@ -40,6 +46,14 @@ const ProductSellerSchema = new Schema<IProductSeller>(
     avatar: { type: String, default: "" },
     rating: { type: Number, default: 5 },
     description: { type: String, default: "Rasmiy do'kon" },
+  },
+  { _id: false }
+);
+
+const ProductColorVariantSchema = new Schema<IProductColorVariant>(
+  {
+    name: { type: String, required: true, trim: true },
+    imageUrl: { type: String, required: true, trim: true },
   },
   { _id: false }
 );
@@ -103,6 +117,10 @@ const ProductSchema = new Schema<IProductDocument>(
     },
     videos: {
       type: [String],
+      default: [],
+    },
+    colorVariants: {
+      type: [ProductColorVariantSchema],
       default: [],
     },
     sizes: {

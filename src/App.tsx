@@ -240,6 +240,9 @@ const App: React.FC = () => {
   const [pendingOrderData, setPendingOrderData] = useState<{
     product: Product;
     size: string;
+    selectedSize?: string;
+    selectedColor?: string;
+    selectedColorImage?: string;
     quantity?: number;
     cartItemId?: string;
     auctionId?: string;
@@ -634,8 +637,17 @@ const App: React.FC = () => {
     cashbackUsed?: number
   ) => {
     if (!currentUser || !pendingOrderData) return;
-    const { product, size, quantity = 1, cartItemId } = pendingOrderData;
+    const {
+      product,
+      size,
+      selectedSize,
+      selectedColor,
+      selectedColorImage,
+      quantity = 1,
+      cartItemId
+    } = pendingOrderData;
     const safeQty = Math.max(1, Math.round(quantity || 1));
+    const resolvedSize = selectedSize || size || 'Standard';
     const actualPrice =
       typeof finalPrice === 'number'
         ? finalPrice
@@ -647,7 +659,21 @@ const App: React.FC = () => {
       username: currentUser.username,
       productId: product.id,
       productName: safeQty > 1 ? `${product.name} (${safeQty} dona)` : product.name,
-      size,
+      size: resolvedSize,
+      selectedSize: resolvedSize,
+      selectedColor: selectedColor || undefined,
+      selectedColorImage: selectedColorImage || undefined,
+      items: [
+        {
+          productId: product.id,
+          productName: product.name,
+          quantity: safeQty,
+          price: actualPrice,
+          selectedColor: selectedColor || undefined,
+          selectedColorImage: selectedColorImage || undefined,
+          selectedSize: resolvedSize
+        }
+      ],
       price: actualPrice,
       status: 'verifying',
       date: new Date().toLocaleDateString(),
@@ -704,8 +730,12 @@ const App: React.FC = () => {
       fetchData();
       triggerPushPermissionPrompt('order');
 
+      const variantLine = savedOrder.selectedColor
+        ? `Rang: ${savedOrder.selectedColor} | Razmer: ${savedOrder.selectedSize || savedOrder.size}`
+        : `Razmer: ${savedOrder.selectedSize || savedOrder.size}`;
+
       sendTelegramNotification(
-        `💸 *YUYU Shop Yangi To'lov*\n📦 Tovar: ${savedOrder.productName}\n💰 Narx: ${savedOrder.price.toLocaleString()} so'm\n👤 Mijoz: ${currentUser.username}\n📍 Manzil: ${address}\n🆔 Buyurtma: ${savedOrder.id}`
+        `YUYU Shop Yangi Buyurtma To'lovi\nTovar: ${savedOrder.productName}\n${variantLine}\nNarx: ${savedOrder.price.toLocaleString()} so'm\nMijoz: ${currentUser.username}\nManzil: ${address}\nBuyurtma ID: ${savedOrder.id}`
       );
     } catch {
       notify("Buyurtmani saqlashda xatolik yuz berdi", 'error');
@@ -800,6 +830,54 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSaveCargoWeighing = async (
+    orderId: string,
+    data: { trackingCode: string; cargoWeightKg: number; cargoRatePerKg: number; cargoMethod: 'avto' | 'avia' }
+  ) => {
+    try {
+      const res = await safeFetchJSON(`/api/orders/${encodeURIComponent(orderId)}/cargo-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'weigh',
+          ...data
+        })
+      });
+      const updated = res?.order;
+      if (updated) {
+        setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o)));
+      }
+      notify("Kargo o'lchovi saqlandi va mijozga xabar yuborildi", 'success');
+    } catch (err: any) {
+      notify(err?.message || "Kargo o'lchovini saqlashda xatolik", 'error');
+    }
+  };
+
+  const handleApproveCargoPayment = async (orderId: string) => {
+    try {
+      const res = await safeFetchJSON(`/api/orders/${encodeURIComponent(orderId)}/cargo-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve' })
+      });
+      const updated = res?.order;
+      if (updated) {
+        setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o)));
+      }
+      notify("Kargo to'lovi tasdiqlandi va mijozga xabar yuborildi", 'success');
+    } catch (err: any) {
+      notify(err?.message || "Kargo to'lovini tasdiqlashda xatolik", 'error');
+    }
+  };
+
+  const handlePayCargo = async (orderId: string, receiptUrl: string) => {
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId ? { ...o, cargoPaymentStatus: 'verifying', cargoReceiptUrl: receiptUrl } : o
+      )
+    );
+  };
+
   const deleteOrder = async (orderId: string) => {
     try {
       await safeFetchJSON(`/api/orders/${orderId}`, { method: 'DELETE' });
@@ -821,29 +899,56 @@ const App: React.FC = () => {
     } catch {}
   };
 
-  const addToCart = (product: Product, size: string, quantity = 1) => {
+  const addToCart = (
+    product: Product,
+    size: string,
+    quantity = 1,
+    selectedColor?: string,
+    selectedColorImage?: string
+  ) => {
     playClickSound();
     const safeQty = Math.max(1, Math.min(20, Math.round(quantity || 1)));
+    const normalizedColor = selectedColor?.trim() || '';
     const existingIdx = cart.findIndex(
-      (item) => item.product?.id === product.id && item.size === size
+      (item) =>
+        item.product?.id === product.id &&
+        item.size === size &&
+        (item.selectedColor || '') === normalizedColor
     );
     let updated: any[];
     if (existingIdx > -1) {
       updated = cart.map((item, idx) =>
         idx === existingIdx
-          ? { ...item, quantity: (item.quantity || 1) + safeQty }
+          ? {
+              ...item,
+              quantity: (item.quantity || 1) + safeQty,
+              selectedColor: normalizedColor || item.selectedColor,
+              selectedColorImage: selectedColorImage || item.selectedColorImage
+            }
           : item
       );
     } else {
-      const newItem = { id: Date.now().toString(), product, size, quantity: safeQty };
+      const newItem = {
+        id: Date.now().toString(),
+        product,
+        size,
+        selectedSize: size,
+        selectedColor: normalizedColor || undefined,
+        selectedColorImage: selectedColorImage || undefined,
+        quantity: safeQty
+      };
       updated = [...cart, newItem];
     }
     setCart(updated);
     syncCartToMongo(updated);
+    const labelParts = [
+      normalizedColor ? `Rang: ${normalizedColor}` : '',
+      `Razmer: ${size}`
+    ].filter(Boolean);
     notify(
       safeQty > 1
-        ? `Savatga qo'shildi (${safeQty} dona · ${size})`
-        : `Savatga qo'shildi (${size})`,
+        ? `Savatga qo'shildi (${safeQty} dona · ${labelParts.join(' | ')})`
+        : `Savatga qo'shildi (${labelParts.join(' | ')})`,
       'success'
     );
   };
@@ -1156,9 +1261,16 @@ const App: React.FC = () => {
             t={t}
             product={selectedProduct}
             onBack={() => navigate('catalog')}
-            onOrder={(p, sz) => {
+            onOrder={(p, sz, qty = 1, selColor, selColorImg) => {
               playClickSound();
-              setPendingOrderData({ product: p, size: sz });
+              setPendingOrderData({
+                product: p,
+                size: sz,
+                selectedSize: sz,
+                selectedColor: selColor,
+                selectedColorImage: selColorImg,
+                quantity: qty
+              });
               navigate('payment');
             }}
             onAddToCart={addToCart}
@@ -1183,7 +1295,10 @@ const App: React.FC = () => {
               playClickSound();
               setPendingOrderData({
                 product: item.product,
-                size: item.size,
+                size: item.selectedSize || item.size,
+                selectedSize: item.selectedSize || item.size,
+                selectedColor: item.selectedColor,
+                selectedColorImage: item.selectedColorImage,
                 quantity: item.quantity || 1,
                 cartItemId: item.id
               });
@@ -1207,6 +1322,9 @@ const App: React.FC = () => {
             t={t}
             product={pendingOrderData.product}
             quantity={pendingOrderData.quantity || 1}
+            selectedSize={pendingOrderData.selectedSize || pendingOrderData.size}
+            selectedColor={pendingOrderData.selectedColor}
+            selectedColorImage={pendingOrderData.selectedColorImage}
             promoCodes={promoCodes}
             currentUser={currentUser}
             onConfirm={(r, addr, finalPrice, usedPromo, cashbackUsed) => {
@@ -1228,7 +1346,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {currentView === 'orders' && (
+        {currentView === 'orders' && currentUser && (
           <OrdersView
             t={t}
             orders={orders.filter((o) => o.userId === currentUser.telegramId)}
@@ -1239,6 +1357,8 @@ const App: React.FC = () => {
             notify={notify}
             safeFetchJSON={safeFetchJSON}
             onRefreshOrders={() => fetchData(currentUser.telegramId)}
+            onPayCargo={handlePayCargo}
+            playSound={playClickSound}
           />
         )}
 
@@ -1362,6 +1482,8 @@ const App: React.FC = () => {
             orders={orders}
             onUpdateStatus={updateOrderStatus}
             onUpdateCargoStatus={updateOrderCargoStatus}
+            onSaveCargoWeighing={handleSaveCargoWeighing}
+            onApproveCargoPayment={handleApproveCargoPayment}
             onDelete={deleteOrder}
             onBack={() => navigate('profile')}
             onUnauthorizedBack={() => navigate('profile')}

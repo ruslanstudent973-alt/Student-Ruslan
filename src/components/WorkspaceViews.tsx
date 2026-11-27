@@ -4,7 +4,7 @@ import {
   MessageCircle, PlusCircle, Grid, ClipboardList, Image as ImageIcon, Handshake,
   BarChart3, Copy, Check, Search, Trash2, Plus, UploadCloud, X, Send, Loader2,
   MapPin, Video, Play, Zap, Lock, UserPlus, Calendar, Sun, Moon, Star, ShieldCheck, ShieldAlert,
-  Clock, CheckCircle2, Volume2, VolumeX, Crown, Gavel, Wallet, TrendingUp, XCircle, Truck
+  Clock, CheckCircle2, Volume2, VolumeX, Crown, Gavel, Wallet, TrendingUp, XCircle, Truck, Scale
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell
@@ -1136,17 +1136,32 @@ const AdminOrderCard: React.FC<{
   t: any;
   onUpdateStatus: (id: string, status: Order['status'], trackNumber?: string) => void;
   onUpdateCargoStatus?: (id: string, cargoStatus: CargoStage, trackingCode?: string) => Promise<void> | void;
+  onSaveCargoWeighing?: (orderId: string, data: { trackingCode: string; cargoWeightKg: number; cargoRatePerKg: number; cargoMethod: 'avto' | 'avia' }) => Promise<void> | void;
+  onApproveCargoPayment?: (orderId: string) => Promise<void> | void;
   onDelete: (id: string) => void;
-}> = ({ order, t, onUpdateStatus, onUpdateCargoStatus, onDelete }) => {
+}> = ({ order, t, onUpdateStatus, onUpdateCargoStatus, onSaveCargoWeighing, onApproveCargoPayment, onDelete }) => {
   const [trackNum, setTrackNum] = useState(order.trackingCode || order.trackNumber || '');
+  const [weightInput, setWeightInput] = useState(String(order.cargoWeightKg || '0.5'));
+  const [rateInput, setRateInput] = useState(String(order.cargoRatePerKg || '76800'));
+  const [cargoMethod, setCargoMethod] = useState<'avto' | 'avia'>(order.cargoMethod || 'avto');
+  const [savingCargoWeigh, setSavingCargoWeigh] = useState(false);
+  const [approvingCargo, setApprovingCargo] = useState(false);
   const [updatingStage, setUpdatingStage] = useState<CargoStage | 'track' | null>(null);
+
   const currentCargoStage = normalizeCargoStage(order.cargoStatus, order.status);
   const isDone = order.status === 'delivered' || order.status === 'paid';
   const isCancelled = order.status === 'cancelled';
 
+  const parsedWeight = parseFloat(weightInput) || 0;
+  const parsedRate = parseFloat(rateInput) || 0;
+  const calculatedCargoFee = Math.round(parsedWeight * parsedRate);
+
   useEffect(() => {
     setTrackNum(order.trackingCode || order.trackNumber || '');
-  }, [order.trackingCode, order.trackNumber]);
+    if (order.cargoWeightKg) setWeightInput(String(order.cargoWeightKg));
+    if (order.cargoRatePerKg) setRateInput(String(order.cargoRatePerKg));
+    if (order.cargoMethod) setCargoMethod(order.cargoMethod);
+  }, [order.trackingCode, order.trackNumber, order.cargoWeightKg, order.cargoRatePerKg, order.cargoMethod]);
 
   const activeStepTsRaw =
     currentCargoStage === 1
@@ -1185,17 +1200,38 @@ const AdminOrderCard: React.FC<{
       className="yuyu-glass p-6 rounded-3xl space-y-4"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="space-y-0.5 min-w-0">
-          <p className="font-mono text-xs font-semibold text-[#0F294A] dark:text-blue-400">
-            {order.id} · {order.date}
-          </p>
-          <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
-            {order.productName} ({order.size})
-          </h3>
-          <p className="text-xs text-slate-500">
-            Mijoz: {order.username}
-            {order.referredBy ? ` · Hamkor: ${order.referredBy}` : ''}
-          </p>
+        <div className="flex items-start gap-3.5 min-w-0">
+          {order.selectedColorImage && (
+            <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-[#2563EB]/40 bg-white dark:bg-slate-800 shrink-0 shadow-sm">
+              <SafeImage
+                src={order.selectedColorImage}
+                alt={order.selectedColor || order.productName}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+          <div className="space-y-1 min-w-0">
+            <p className="font-mono text-xs font-semibold text-[#0F294A] dark:text-blue-400">
+              {order.id} · {order.date}
+            </p>
+            <h3 className="font-display font-semibold text-base text-slate-900 dark:text-white truncate">
+              {order.productName}
+            </h3>
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+              {order.selectedColor && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800/70 text-[11px] font-semibold text-[#1D4ED8] dark:text-blue-300">
+                  <span>Rang: {order.selectedColor}</span>
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                <span>Razmer: {order.selectedSize || order.size || 'Standard'}</span>
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 pt-0.5">
+              Mijoz: {order.username}
+              {order.referredBy ? ` · Hamkor: ${order.referredBy}` : ''}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -1236,6 +1272,151 @@ const AdminOrderCard: React.FC<{
         <span className="font-mono tabular-nums font-bold text-[#0F294A] dark:text-blue-400 shrink-0">
           {order.price.toLocaleString()} UZS
         </span>
+      </div>
+
+      {/* Trek-kod va Kargo hisoblash (Scale SVG) */}
+      <div className="rounded-2xl bg-white/95 dark:bg-slate-900/85 border border-blue-200/70 dark:border-blue-900/60 p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-900 dark:text-white pb-2 border-b border-slate-200/60 dark:border-slate-800">
+          <span className="inline-flex items-center gap-1.5">
+            <Scale size={15} className="text-[#2563EB]" />
+            <span>Trek-kod va Kargo hisoblash</span>
+          </span>
+          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium ${
+            order.cargoPaymentStatus === 'paid'
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+              : order.cargoPaymentStatus === 'verifying'
+              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+              : order.cargoPaymentStatus === 'unpaid'
+              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+          }`}>
+            Kargo holati: {order.cargoPaymentStatus || 'pending_weighing'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Trek-kod</label>
+            <input
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono outline-none focus:border-[#2563EB]"
+              placeholder="YY-884210"
+              value={trackNum}
+              onChange={(e) => setTrackNum(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Vazni (kg)</label>
+            <input
+              type="number"
+              step="0.05"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono outline-none focus:border-[#2563EB]"
+              value={weightInput}
+              onChange={(e) => setWeightInput(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">1 kg tarifi (so'm)</label>
+            <div className="flex gap-1.5">
+              <input
+                type="number"
+                className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono outline-none focus:border-[#2563EB]"
+                value={rateInput}
+                onChange={(e) => setRateInput(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setRateInput('76800');
+                  setCargoMethod('avto');
+                }}
+                className={`px-2 py-1 rounded-lg text-[10px] font-semibold ${cargoMethod === 'avto' ? 'bg-[#2563EB] text-white' : 'yuyu-glass-subtle text-slate-600 dark:text-slate-300'}`}
+                title="Avto kargo"
+              >
+                Avto
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRateInput('140800');
+                  setCargoMethod('avia');
+                }}
+                className={`px-2 py-1 rounded-lg text-[10px] font-semibold ${cargoMethod === 'avia' ? 'bg-[#2563EB] text-white' : 'yuyu-glass-subtle text-slate-600 dark:text-slate-300'}`}
+                title="Avia kargo"
+              >
+                Avia
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <div className="text-xs font-mono">
+            Hisoblangan kargo: <span className="font-bold text-[#2563EB] dark:text-blue-400">{calculatedCargoFee.toLocaleString()} so'm</span> ({parsedWeight} kg × {parsedRate.toLocaleString()} so'm)
+          </div>
+          <button
+            type="button"
+            disabled={savingCargoWeigh}
+            onClick={async () => {
+              if (!onSaveCargoWeighing) return;
+              setSavingCargoWeigh(true);
+              try {
+                await onSaveCargoWeighing(order.id, {
+                  trackingCode: trackNum.trim(),
+                  cargoWeightKg: parsedWeight,
+                  cargoRatePerKg: parsedRate,
+                  cargoMethod
+                });
+              } finally {
+                setSavingCargoWeigh(false);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#2563EB] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm"
+          >
+            {savingCargoWeigh ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            <span>Saqlash va Mijozga yuborish</span>
+          </button>
+        </div>
+
+        {(order.cargoReceiptUrl || order.cargoPaymentStatus === 'verifying') && (
+          <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {order.cargoReceiptUrl && (
+                <a href={order.cargoReceiptUrl} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 block shrink-0">
+                  <img src={order.cargoReceiptUrl} alt="Kargo cheki" className="w-full h-full object-cover" />
+                </a>
+              )}
+              <div className="space-y-0.5 text-xs">
+                <p className="font-semibold text-slate-900 dark:text-white">Mijoz kargo chekini yukladi</p>
+                <p className="text-slate-500 font-mono">Summa: {(order.cargoFeeUzs || calculatedCargoFee).toLocaleString()} so'm</p>
+              </div>
+            </div>
+
+            {order.cargoPaymentStatus !== 'paid' ? (
+              <button
+                type="button"
+                disabled={approvingCargo}
+                onClick={async () => {
+                  if (!onApproveCargoPayment) return;
+                  setApprovingCargo(true);
+                  try {
+                    await onApproveCargoPayment(order.id);
+                  } finally {
+                    setApprovingCargo(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm whitespace-nowrap"
+              >
+                {approvingCargo ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                <span>Kargo to'lovini tasdiqlash</span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 size={14} />
+                <span>Kargo to'lovi tasdiqlangan</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick 1-Click Cargo Tracking Controls (1 -> 2 -> 3 -> 4 + Tracking Code) */}
@@ -1366,14 +1547,16 @@ export const AdminOrdersView: React.FC<{
   orders: Order[];
   onUpdateStatus: (id: string, status: Order['status'], trackNumber?: string) => void;
   onUpdateCargoStatus?: (id: string, cargoStatus: CargoStage, trackingCode?: string) => Promise<void> | void;
+  onSaveCargoWeighing?: (orderId: string, data: { trackingCode: string; cargoWeightKg: number; cargoRatePerKg: number; cargoMethod: 'avto' | 'avia' }) => Promise<void> | void;
+  onApproveCargoPayment?: (orderId: string) => Promise<void> | void;
   onDelete: (id: string) => void;
   onBack: () => void;
   playSound: () => void;
-}> = ({ t, orders, onUpdateStatus, onUpdateCargoStatus, onDelete, onBack, playSound }) => (
+}> = ({ t, orders, onUpdateStatus, onUpdateCargoStatus, onSaveCargoWeighing, onApproveCargoPayment, onDelete, onBack, playSound }) => (
   <div className="space-y-8">
     <PageHeader
       title={t.adminOrders}
-      subtitle={`Jami ${orders.length} ta buyurtma · 1 bosishda kargo bosqichini boshqarish`}
+      subtitle={`Jami ${orders.length} ta buyurtma · 1 bosishda kargo bosqichi va to'lovlarini boshqarish`}
       onBack={() => {
         playSound();
         onBack();
@@ -1392,6 +1575,8 @@ export const AdminOrdersView: React.FC<{
               t={t}
               onUpdateStatus={onUpdateStatus}
               onUpdateCargoStatus={onUpdateCargoStatus}
+              onSaveCargoWeighing={onSaveCargoWeighing}
+              onApproveCargoPayment={onApproveCargoPayment}
               onDelete={onDelete}
             />
           </StaggerItem>
@@ -1422,9 +1607,17 @@ export const AdminAddProductView: React.FC<{
     isCheapPrice: productToEdit?.isCheapPrice || false,
     isFlashSale: productToEdit?.isFlashSale || false,
     flashSaleHours: '24',
-    weight: productToEdit?.weight?.toString() || '0.5'
+    weight: productToEdit?.weight?.toString() || ''
   });
   type MediaDraftItem = {
+    previewUrl: string;
+    url?: string;
+    file?: File;
+    isBlobPreview?: boolean;
+  };
+  type ColorVariantDraftItem = {
+    id: string;
+    name: string;
     previewUrl: string;
     url?: string;
     file?: File;
@@ -1437,6 +1630,14 @@ export const AdminAddProductView: React.FC<{
   const [videoItems, setVideoItems] = useState<MediaDraftItem[]>(() =>
     (productToEdit?.videos || []).map((url) => ({ previewUrl: url, url }))
   );
+  const [colorVariantItems, setColorVariantItems] = useState<ColorVariantDraftItem[]>(() =>
+    (productToEdit?.colorVariants || []).map((cv, idx) => ({
+      id: `cv-${idx}-${Date.now()}`,
+      name: cv.name || '',
+      previewUrl: cv.imageUrl || '',
+      url: cv.imageUrl || ''
+    }))
+  );
   const [aiGenerating, setAiGenerating] = useState(false);
   const [savingStatus, setSavingStatus] = useState<'' | 'uploading' | 'saving'>('');
 
@@ -1448,9 +1649,82 @@ export const AdminAddProductView: React.FC<{
       videoItems.forEach((item) => {
         if (item.isBlobPreview) URL.revokeObjectURL(item.previewUrl);
       });
+      colorVariantItems.forEach((item) => {
+        if (item.isBlobPreview && item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const addColorVariantRow = () => {
+    playSound();
+    setColorVariantItems((prev) => [
+      ...prev,
+      {
+        id: `cv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: '',
+        previewUrl: ''
+      }
+    ]);
+  };
+
+  const updateColorVariantName = (idx: number, name: string) => {
+    setColorVariantItems((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, name } : item))
+    );
+  };
+
+  const handleColorVariantFile = (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    playSound();
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const blobUrl = URL.createObjectURL(file);
+    setColorVariantItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        if (item.isBlobPreview && item.previewUrl) {
+          URL.revokeObjectURL(item.previewUrl);
+        }
+        return {
+          ...item,
+          previewUrl: blobUrl,
+          url: undefined,
+          file,
+          isBlobPreview: true
+        };
+      })
+    );
+    e.target.value = '';
+  };
+
+  const removeColorVariantRow = (idx: number) => {
+    playSound();
+    setColorVariantItems((prev) => {
+      const target = prev[idx];
+      if (target?.isBlobPreview && target.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const parsedSizeList = useMemo(
+    () =>
+      form.sizes
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [form.sizes]
+  );
+
+  const removeSingleSizeChip = (sizeToRemove: string) => {
+    playSound();
+    const remaining = parsedSizeList.filter((s) => s !== sizeToRemove);
+    setForm((prev) => ({
+      ...prev,
+      sizes: remaining.length > 0 ? remaining.join(', ') : 'Standard'
+    }));
+  };
 
   const uploadSingleFileToApi = async (file: File, type: 'img' | 'vid'): Promise<string> => {
     const formData = new FormData();
@@ -1580,8 +1854,23 @@ export const AdminAddProductView: React.FC<{
   const handleSave = async () => {
     if (savingStatus) return;
     playSound();
-    if (!form.name.trim() || !form.price || imageItems.length === 0) {
-      notify("Iltimos, nomi, narxi va kamida bitta rasm kiriting", 'error');
+
+    const activeColorRows = colorVariantItems.filter(
+      (cv) => cv.name.trim().length > 0 || Boolean(cv.file || cv.url || cv.previewUrl)
+    );
+    for (const cv of activeColorRows) {
+      if (!cv.name.trim()) {
+        notify("Har bir qo'shilgan rang varianti uchun rang nomini kiriting (masalan: Qora, Oq)", 'error');
+        return;
+      }
+      if (!cv.file && !cv.url && !cv.previewUrl) {
+        notify(`"${cv.name.trim()}" rangi uchun rasm yuklang`, 'error');
+        return;
+      }
+    }
+
+    if (!form.name.trim() || !form.price || (imageItems.length === 0 && activeColorRows.length === 0)) {
+      notify("Iltimos, nomi, narxi va kamida bitta rasm (yoki rang rasmi) kiriting", 'error');
       return;
     }
 
@@ -1594,7 +1883,8 @@ export const AdminAddProductView: React.FC<{
     try {
       const hasPendingUploads =
         imageItems.some((item) => item.file && !item.url) ||
-        videoItems.some((item) => item.file && !item.url);
+        videoItems.some((item) => item.file && !item.url) ||
+        activeColorRows.some((item) => item.file && !item.url);
 
       if (hasPendingUploads) {
         setSavingStatus('uploading');
@@ -1602,13 +1892,32 @@ export const AdminAddProductView: React.FC<{
       }
 
       // 1-qadam: Barcha yangi fayllarni avval /api/upload ga yuklab URL olish
-      const finalImages = await Promise.all(
+      const uploadedMainImages = await Promise.all(
         imageItems.map(async (item) => {
           if (item.url) return item.url;
           if (!item.file) return item.previewUrl;
           return uploadSingleFileToApi(item.file, 'img');
         })
       );
+
+      const finalColorVariants = await Promise.all(
+        activeColorRows.map(async (cv) => {
+          const uploadedUrl = cv.url
+            ? cv.url
+            : cv.file
+            ? await uploadSingleFileToApi(cv.file, 'img')
+            : cv.previewUrl;
+          return {
+            name: cv.name.trim(),
+            imageUrl: uploadedUrl
+          };
+        })
+      );
+
+      const finalImages =
+        uploadedMainImages.length > 0
+          ? uploadedMainImages
+          : finalColorVariants.map((cv) => cv.imageUrl);
 
       const finalVideos = await Promise.all(
         videoItems.map(async (item) => {
@@ -1631,7 +1940,8 @@ export const AdminAddProductView: React.FC<{
         category: form.category.trim() || 'Boshqa',
         images: finalImages,
         videos: finalVideos.length > 0 ? finalVideos : undefined,
-        sizes: form.sizes.split(',').map((s) => s.trim()).filter(Boolean) || ['Standard'],
+        colorVariants: finalColorVariants,
+        sizes: parsedSizeList.length > 0 ? parsedSizeList : ['Standard'],
         rating: productToEdit?.rating || 5,
         salesCount: productToEdit?.salesCount || 0,
         seller: productToEdit?.seller || {
@@ -1646,7 +1956,7 @@ export const AdminAddProductView: React.FC<{
         flashSaleEnd: form.isFlashSale
           ? Date.now() + parseInt(form.flashSaleHours || '24', 10) * 3600000
           : undefined,
-        weight: parseFloat(form.weight) || 0.5
+        weight: form.weight ? parseFloat(form.weight) || undefined : undefined
       };
 
       // 2-qadam: Olingan R2 media URL'lari bilan mahsulotni /api/products ga saqlash
@@ -1679,7 +1989,7 @@ export const AdminAddProductView: React.FC<{
     <div className="space-y-8">
       <PageHeader
         title={productToEdit ? 'Mahsulotni tahrirlash' : "Yangi mahsulot qo'shish"}
-        subtitle="Mahsulot ma'lumotlari, narxi va rasmlarini kiriting"
+        subtitle="Mahsulot ma'lumotlari, narxi, rang rasmlari va razmerlarini kiriting"
         onBack={() => {
           playSound();
           onBack();
@@ -1767,10 +2077,11 @@ export const AdminAddProductView: React.FC<{
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Vazni (kg)</label>
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Vazni (kg — ixtiyoriy)</label>
               <input
                 type="number"
-                step="0.1"
+                step="0.05"
+                placeholder="Masalan: 0.5"
                 className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono outline-none focus:border-[#0F294A]"
                 value={form.weight}
                 onChange={(e) => setForm({ ...form, weight: e.target.value })}
@@ -1778,13 +2089,185 @@ export const AdminAddProductView: React.FC<{
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Variantlar (vergul bilan)</label>
+          {/* 1688 / Pinduoduo Style Razmerlar Block */}
+          <div className="space-y-2.5 p-4 rounded-2xl yuyu-glass-subtle border border-slate-200/70 dark:border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Razmerlar (vergul bilan ajratib yozing)
+              </label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound();
+                    setForm({ ...form, sizes: 'S, M, L, XL, XXL' });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 hover:border-[#2563EB]"
+                >
+                  S-XXL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound();
+                    setForm({ ...form, sizes: '36, 37, 38, 39, 40, 41' });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 hover:border-[#2563EB]"
+                >
+                  36-41
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound();
+                    setForm({ ...form, sizes: '39, 40, 41, 42, 43, 44' });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 hover:border-[#2563EB]"
+                >
+                  39-44
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound();
+                    setForm({ ...form, sizes: 'Standard' });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 hover:border-[#2563EB]"
+                >
+                  Standard
+                </button>
+              </div>
+            </div>
             <input
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-[#0F294A]"
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono outline-none focus:border-[#0F294A]"
+              placeholder="Masalan: S, M, L, XL yoki 38, 39, 40, 41"
               value={form.sizes}
               onChange={(e) => setForm({ ...form, sizes: e.target.value })}
             />
+            {parsedSizeList.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {parsedSizeList.map((sz) => (
+                  <span
+                    key={sz}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0F294A]/10 dark:bg-blue-500/15 border border-[#0F294A]/20 dark:border-blue-400/30 text-xs font-mono font-semibold text-[#0F294A] dark:text-blue-300"
+                  >
+                    <span>{sz}</span>
+                    {parsedSizeList.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeSingleSizeChip(sz)}
+                        className="text-slate-400 hover:text-red-500 transition-colors"
+                        aria-label={`${sz} razmerini o'chirish`}
+                      >
+                        <X size={11} />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 1688 & Pinduoduo Style Rang variantlari (Rasm bilan) Block */}
+          <div className="space-y-3 p-4 rounded-2xl yuyu-glass-subtle border border-blue-200/70 dark:border-blue-900/50">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  Rang variantlari (Rasm bilan — 1688 / Pinduoduo uslubida)
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Har bir rangning o'z rasmini Cloudflare R2 ga yuklang
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={Boolean(savingStatus)}
+                onClick={addColorVariantRow}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-semibold transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
+              >
+                <Plus size={14} />
+                <span>Rang qo'shish</span>
+              </button>
+            </div>
+
+            {colorVariantItems.length === 0 ? (
+              <div className="py-5 px-4 rounded-xl border border-dashed border-slate-300/80 dark:border-slate-700 text-center text-xs text-slate-500 dark:text-slate-400">
+                Hozircha rang variantlari qo'shilmagan. Yuqoridagi &quot;Rang qo'shish&quot; tugmasini bosing.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {colorVariantItems.map((cv, idx) => (
+                  <div
+                    key={cv.id}
+                    className="p-3 rounded-xl bg-white/85 dark:bg-slate-900/85 border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center gap-3"
+                  >
+                    <label className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 overflow-hidden shrink-0 flex flex-col items-center justify-center cursor-pointer hover:border-[#2563EB] transition-colors bg-slate-50 dark:bg-slate-800/60 relative group">
+                      {cv.previewUrl ? (
+                        <>
+                          <img
+                            src={cv.previewUrl}
+                            alt={cv.name || `Rang ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-slate-950/55 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                            <UploadCloud size={15} />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud size={17} className="text-slate-400" />
+                          <span className="text-[10px] text-slate-400 mt-0.5">Rasm</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={Boolean(savingStatus)}
+                        onChange={(e) => handleColorVariantFile(idx, e)}
+                      />
+                    </label>
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                        Rang nomi #{idx + 1}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Masalan: Qora, Oq, To'q ko'k..."
+                        value={cv.name}
+                        disabled={Boolean(savingStatus)}
+                        onChange={(e) => updateColorVariantName(idx, e.target.value)}
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-[#2563EB]"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl yuyu-glass-subtle text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer hover:border-[#2563EB]">
+                        <UploadCloud size={14} className="text-[#2563EB]" />
+                        <span>{cv.previewUrl ? 'Almashtirish' : 'Rasm yuklash'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={Boolean(savingStatus)}
+                          onChange={(e) => handleColorVariantFile(idx, e)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={Boolean(savingStatus)}
+                        onClick={() => removeColorVariantRow(idx)}
+                        className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-red-600 hover:border-red-300 transition-colors"
+                        aria-label="Rang variantini o'chirish"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">

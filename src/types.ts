@@ -11,6 +11,11 @@ export interface Review {
   date: string;
 }
 
+export interface ProductColorVariant {
+  name: string;
+  imageUrl: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -22,6 +27,7 @@ export interface Product {
   category: string;
   images: string[];
   videos?: string[];
+  colorVariants?: ProductColorVariant[];
   sizes: string[];
   rating: number;
   salesCount: number;
@@ -43,16 +49,32 @@ export interface CartItem {
   id: string;
   product: Product;
   size: string;
+  selectedSize?: string;
+  selectedColor?: string;
+  selectedColorImage?: string;
   quantity: number;
 }
 
 export type CargoStage = 1 | 2 | 3 | 4;
+
+export type CargoPaymentStatus = 'pending_weighing' | 'unpaid' | 'verifying' | 'paid';
+export type CargoMethod = 'avto' | 'avia';
 
 export interface OrderStatusTimestamps {
   step1?: string | Date | null;
   step2?: string | Date | null;
   step3?: string | Date | null;
   step4?: string | Date | null;
+}
+
+export interface OrderItemVariant {
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  selectedColor?: string;
+  selectedColorImage?: string;
+  selectedSize?: string;
 }
 
 export interface Order {
@@ -63,11 +85,21 @@ export interface Order {
   productId: string;
   productName: string;
   size: string;
+  selectedSize?: string;
+  selectedColor?: string;
+  selectedColorImage?: string;
+  items?: OrderItemVariant[];
   price: number;
   status: 'pending' | 'verifying' | 'paid' | 'shipped' | 'delivered' | 'cancelled';
   trackNumber?: string;
   trackingCode?: string;
   cargoStatus?: CargoStage;
+  cargoWeightKg?: number;
+  cargoRatePerKg?: number;
+  cargoFeeUzs?: number;
+  cargoPaymentStatus?: CargoPaymentStatus;
+  cargoReceiptUrl?: string;
+  cargoMethod?: CargoMethod;
   statusTimestamps?: OrderStatusTimestamps;
   date: string;
   timestamp: number;

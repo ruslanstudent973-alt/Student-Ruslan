@@ -719,8 +719,20 @@ export const DetailView: React.FC<{
   t: any;
   product: Product;
   onBack: () => void;
-  onOrder: (p: Product, sz: string) => void;
-  onAddToCart: (p: Product, sz: string) => void;
+  onOrder: (
+    p: Product,
+    sz: string,
+    quantity?: number,
+    selectedColor?: string,
+    selectedColorImage?: string
+  ) => void;
+  onAddToCart: (
+    p: Product,
+    sz: string,
+    quantity?: number,
+    selectedColor?: string,
+    selectedColorImage?: string
+  ) => void;
   isWishlisted: boolean;
   onToggleWishlist: (productId: string) => void;
   playSound: () => void;
@@ -744,12 +756,44 @@ export const DetailView: React.FC<{
   safeFetchJSON,
   onOpenVipModal
 }) => {
+  const colorVariants = useMemo(
+    () =>
+      Array.isArray(product.colorVariants)
+        ? product.colorVariants.filter((cv) => cv && cv.name && cv.imageUrl)
+        : [],
+    [product.colorVariants]
+  );
+  const availableSizes = useMemo(
+    () =>
+      Array.isArray(product.sizes) && product.sizes.length > 0
+        ? product.sizes.filter((s) => typeof s === 'string' && s.trim().length > 0)
+        : ['Standard'],
+    [product.sizes]
+  );
+
   const [activeMedia, setActiveMedia] = useState(0);
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.[0] || 'Standard');
+  const [selectedColor, setSelectedColor] = useState<string>(colorVariants[0]?.name || '');
+  const [selectedColorImage, setSelectedColorImage] = useState<string>(
+    colorVariants[0]?.imageUrl || ''
+  );
+  const [heroOverrideImage, setHeroOverrideImage] = useState<string | null>(
+    colorVariants[0]?.imageUrl || null
+  );
+  const [selectedSize, setSelectedSize] = useState<string>(availableSizes[0] || 'Standard');
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  useEffect(() => {
+    const firstColor = colorVariants[0];
+    setSelectedColor(firstColor?.name || '');
+    setSelectedColorImage(firstColor?.imageUrl || '');
+    setHeroOverrideImage(firstColor?.imageUrl || null);
+    setSelectedSize(availableSizes[0] || 'Standard');
+    setActiveMedia(0);
+  }, [product.id, colorVariants, availableSizes]);
 
   const mediaItems = [...(product.images || []), ...(product.videos || [])];
   const isVideo = (url: string) => url?.includes('.mp4') || url?.startsWith('data:video');
+  const activeHeroSrc = heroOverrideImage || mediaItems[activeMedia] || product.images?.[0] || '';
 
   const displayPrice = Math.round(product.pinduoduoPrice * MARKUP_RATE * CURRENCY_RATE);
   const displayOldPrice = product.oldPrice ? Math.round(product.oldPrice * MARKUP_RATE * CURRENCY_RATE) : null;
@@ -761,6 +805,18 @@ export const DetailView: React.FC<{
   const vipInfo = getEffectiveVipStatus(currentUser);
   const hasVipPrice = Boolean(product.vipPrice && product.vipPrice > 0 && product.vipPrice < displayPrice);
   const isVipLocked = Boolean(product.isVipOnly && !vipInfo.hasVipOnlyAccess);
+
+  const validateVariantSelection = (): boolean => {
+    if (colorVariants.length > 0 && !selectedColor) {
+      notify("Iltimos, avval mahsulot rangini tanlang", 'error');
+      return false;
+    }
+    if (availableSizes.length > 0 && !selectedSize) {
+      notify("Iltimos, avval mahsulot razmerini tanlang", 'error');
+      return false;
+    }
+    return true;
+  };
 
   const handleReviewSubmit = async (reviewData: { rating: number; comment: string }) => {
     try {
@@ -826,24 +882,24 @@ export const DetailView: React.FC<{
           <div className="aspect-[4/3] w-full yuyu-glass rounded-3xl border overflow-hidden flex items-center justify-center p-6">
             <AnimatePresence mode="wait">
               <motion.div
-                key={activeMedia}
+                key={activeHeroSrc}
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ duration: 0.22 }}
                 className="w-full h-full flex items-center justify-center"
               >
-                {isVideo(mediaItems[activeMedia]) ? (
+                {isVideo(activeHeroSrc) ? (
                   <video
-                    src={mediaItems[activeMedia]}
+                    src={activeHeroSrc}
                     controls
                     autoPlay
                     className="max-h-full max-w-full rounded-2xl object-contain"
                   />
                 ) : (
                   <SafeImage
-                    src={mediaItems[activeMedia]}
-                    alt={product.name}
+                    src={activeHeroSrc}
+                    alt={selectedColor ? `${product.name} - ${selectedColor}` : product.name}
                     fallbackLabel={product.name}
                     className="max-h-full max-w-full object-contain"
                   />
@@ -854,35 +910,39 @@ export const DetailView: React.FC<{
 
           {mediaItems.length > 1 && (
             <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-              {mediaItems.map((item, idx) => (
-                <motion.button
-                  key={idx}
-                  type="button"
-                  whileHover={{ y: -2 }}
-                  whileTap={{ scale: 0.94 }}
-                  onClick={() => {
-                    playSound();
-                    setActiveMedia(idx);
-                  }}
-                  className={`w-20 h-20 rounded-2xl overflow-hidden border-2 shrink-0 yuyu-glass-subtle transition-all ${
-                    activeMedia === idx
-                      ? 'border-[#2563EB] dark:border-blue-400 shadow-md'
-                      : 'border-white/70 dark:border-slate-700 opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  {isVideo(item) ? (
-                    <div className="w-full h-full bg-slate-900 flex items-center justify-center">
-                      <Play size={18} className="text-white fill-current" />
-                    </div>
-                  ) : (
-                    <SafeImage
-                      src={item}
-                      alt={`${product.name} ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                </motion.button>
-              ))}
+              {mediaItems.map((item, idx) => {
+                const isSelectedThumb = !heroOverrideImage && activeMedia === idx;
+                return (
+                  <motion.button
+                    key={idx}
+                    type="button"
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.94 }}
+                    onClick={() => {
+                      playSound();
+                      setHeroOverrideImage(null);
+                      setActiveMedia(idx);
+                    }}
+                    className={`w-20 h-20 rounded-2xl overflow-hidden border-2 shrink-0 yuyu-glass-subtle transition-all ${
+                      isSelectedThumb
+                        ? 'border-[#2563EB] dark:border-blue-400 shadow-md'
+                        : 'border-white/70 dark:border-slate-700 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    {isVideo(item) ? (
+                      <div className="w-full h-full bg-slate-900 flex items-center justify-center">
+                        <Play size={18} className="text-white fill-current" />
+                      </div>
+                    ) : (
+                      <SafeImage
+                        src={item}
+                        alt={`${product.name} ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </motion.button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -975,30 +1035,102 @@ export const DetailView: React.FC<{
             {product.description}
           </p>
 
-          {/* Variant / Size Selector */}
+          {/* 1688 & Pinduoduo Style Image-Based Color Selector */}
+          {colorVariants.length > 0 && (
+            <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  Tanlangan rang:{' '}
+                  <span className="text-[#2563EB] dark:text-blue-400 font-bold">
+                    {selectedColor || 'Tanlanmagan'}
+                  </span>
+                </span>
+                <span className="text-[11px] font-mono text-slate-400">
+                  {colorVariants.length} xil rang
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {colorVariants.map((variant, idx) => {
+                  const isSelected = selectedColor === variant.name;
+                  return (
+                    <motion.button
+                      key={`${variant.name}-${idx}`}
+                      type="button"
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.96 }}
+                      onClick={() => {
+                        playSound();
+                        setSelectedColor(variant.name);
+                        setSelectedColorImage(variant.imageUrl);
+                        setHeroOverrideImage(variant.imageUrl);
+                      }}
+                      className="group flex flex-col items-center gap-1.5 text-center focus:outline-none"
+                    >
+                      <div
+                        className={`relative w-16 h-16 rounded-xl overflow-hidden transition-all yuyu-glass-subtle ${
+                          isSelected
+                            ? 'ring-2 ring-[#2563EB] border-2 border-[#2563EB] shadow-md shadow-blue-600/20'
+                            : 'border border-slate-200/80 dark:border-slate-700 opacity-85 hover:opacity-100 hover:border-slate-400'
+                        }`}
+                      >
+                        <SafeImage
+                          src={variant.imageUrl}
+                          alt={variant.name}
+                          className="w-full h-full object-cover"
+                        />
+                        {isSelected && (
+                          <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#2563EB] text-white flex items-center justify-center shadow-sm">
+                            <Check size={10} strokeWidth={3} />
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`text-[11px] font-medium max-w-[68px] truncate transition-colors ${
+                          isSelected
+                            ? 'text-[#2563EB] dark:text-blue-400 font-bold'
+                            : 'text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
+                        }`}
+                      >
+                        {variant.name}
+                      </span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Frosted Glassmorphic Size Selector */}
           <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-700 dark:text-slate-300">{t.size}</span>
-              <span className="text-slate-500">{selectedSize}</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-300">
+                {t.size}:{' '}
+                <span className="text-[#0F294A] dark:text-blue-400 font-bold">{selectedSize}</span>
+              </span>
+              <span className="text-slate-500 font-mono">{selectedSize}</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(product.sizes || ['Standard']).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => {
-                    playSound();
-                    setSelectedSize(s);
-                  }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors whitespace-nowrap ${
-                    selectedSize === s
-                      ? 'bg-[#0F294A] dark:bg-blue-600 text-white border-[#0F294A] dark:border-blue-600'
-                      : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+              {availableSizes.map((s) => {
+                const isActiveSize = selectedSize === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      playSound();
+                      setSelectedSize(s);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all whitespace-nowrap inline-flex items-center gap-1.5 ${
+                      isActiveSize
+                        ? 'bg-[#0F294A] dark:bg-blue-600 text-white border-[#0F294A] dark:border-blue-600 ring-2 ring-[#2563EB]/30 shadow-sm'
+                        : 'yuyu-glass-subtle text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:border-[#2563EB]/60'
+                    }`}
+                  >
+                    {isActiveSize && <Check size={13} strokeWidth={2.5} />}
+                    <span>{s}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1062,7 +1194,16 @@ export const DetailView: React.FC<{
               <>
                 <button
                   type="button"
-                  onClick={() => onOrder(product, selectedSize)}
+                  onClick={() => {
+                    if (!validateVariantSelection()) return;
+                    onOrder(
+                      product,
+                      selectedSize,
+                      1,
+                      selectedColor || undefined,
+                      selectedColorImage || undefined
+                    );
+                  }}
                   className="w-full py-3.5 px-6 bg-[#0F294A] hover:bg-[#163A66] dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-semibold rounded-xl flex items-center justify-center gap-2.5 transition-colors text-sm"
                 >
                   <CreditCard size={18} />
@@ -1072,7 +1213,16 @@ export const DetailView: React.FC<{
                 <div className="grid grid-cols-[1fr_auto_auto] gap-2.5">
                   <button
                     type="button"
-                    onClick={() => onAddToCart(product, selectedSize)}
+                    onClick={() => {
+                      if (!validateVariantSelection()) return;
+                      onAddToCart(
+                        product,
+                        selectedSize,
+                        1,
+                        selectedColor || undefined,
+                        selectedColorImage || undefined
+                      );
+                    }}
                     className="py-3 px-4 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors text-sm whitespace-nowrap"
                   >
                     <PlusCircle size={17} />
@@ -1116,7 +1266,7 @@ export const DetailView: React.FC<{
             <div className="flex items-center justify-between">
               <span>Taxminiy vazn</span>
               <span className="font-mono tabular-nums font-medium text-slate-800 dark:text-slate-200">
-                {product.weight || 0.5} kg
+                {product.weight ? `${product.weight} kg` : "Omborda o'lchanadi"}
               </span>
             </div>
             <div className="flex items-center justify-between">

@@ -43,6 +43,22 @@ function serializeProduct(doc: any) {
     : rest.video
     ? [String(rest.video)]
     : [];
+  const colorVariantsArr = Array.isArray(rest.colorVariants)
+    ? rest.colorVariants
+        .filter(
+          (cv: any) =>
+            cv &&
+            typeof cv === "object" &&
+            typeof cv.name === "string" &&
+            cv.name.trim() &&
+            typeof cv.imageUrl === "string" &&
+            cv.imageUrl.trim()
+        )
+        .map((cv: any) => ({
+          name: cv.name.trim(),
+          imageUrl: cv.imageUrl.trim(),
+        }))
+    : [];
   return {
     ...rest,
     id: rest.id || (_id ? String(_id) : ""),
@@ -51,6 +67,8 @@ function serializeProduct(doc: any) {
     images: Array.isArray(rest.images) ? rest.images : [],
     video: typeof rest.video === "string" && rest.video.trim() ? rest.video : videosArr[0] || "",
     videos: videosArr,
+    colorVariants: colorVariantsArr,
+    sizes: Array.isArray(rest.sizes) ? rest.sizes : [],
   };
 }
 
@@ -246,11 +264,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const rawColorVariants = Array.isArray(body.colorVariants) ? body.colorVariants : [];
+    const colorVariants = rawColorVariants
+      .filter(
+        (cv: any) =>
+          cv &&
+          typeof cv === "object" &&
+          typeof cv.name === "string" &&
+          cv.name.trim().length > 0 &&
+          isSafeMediaUrl(cv.imageUrl)
+      )
+      .map((cv: any) => ({
+        name: String(cv.name).trim().slice(0, 80),
+        imageUrl: String(cv.imageUrl).trim(),
+      }))
+      .slice(0, 30);
+
     const rawImages = Array.isArray(body.images) ? body.images : [];
     const images = rawImages
       .filter(isSafeMediaUrl)
       .map((u: string) => u.trim())
       .slice(0, 20);
+
+    if (images.length === 0 && colorVariants.length > 0) {
+      for (const cv of colorVariants) {
+        if (!images.includes(cv.imageUrl)) {
+          images.push(cv.imageUrl);
+        }
+      }
+    }
 
     if (images.length === 0) {
       return NextResponse.json(
@@ -338,6 +380,22 @@ export async function POST(request: NextRequest) {
         })
       : videos;
 
+    const resolvedColorVariants = existing
+      ? colorVariants.map((cv) => {
+          if (cv.imageUrl.startsWith("/api/media/product-color/")) {
+            const idx = Number(cv.imageUrl.split("/").pop());
+            if (
+              !Number.isNaN(idx) &&
+              Array.isArray(existing.colorVariants) &&
+              existing.colorVariants[idx]?.imageUrl
+            ) {
+              return { name: cv.name, imageUrl: existing.colorVariants[idx].imageUrl };
+            }
+          }
+          return cv;
+        })
+      : colorVariants;
+
     const sellerInput =
       body.seller && typeof body.seller === "object" && !Array.isArray(body.seller)
         ? body.seller
@@ -353,6 +411,7 @@ export async function POST(request: NextRequest) {
       images: resolvedImages,
       video: resolvedVideos[0] || primaryVideo,
       videos: resolvedVideos,
+      colorVariants: resolvedColorVariants,
       sizes: sizes.length > 0 ? sizes : ["Standard"],
       rating:
         Number.isFinite(Number(body.rating)) && Number(body.rating) >= 0 && Number(body.rating) <= 5
