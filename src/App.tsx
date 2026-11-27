@@ -182,7 +182,7 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
 
   for (let i = 0; i < retries; i++) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+    const timeoutId = window.setTimeout(() => controller.abort(), 30000);
     try {
       const res = await fetch(url, { ...mergedOptions, signal: options?.signal || controller.signal });
       window.clearTimeout(timeoutId);
@@ -193,16 +193,15 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
         let errorDetail = text.trim().startsWith('<')
           ? `Server vaqtincha javob bermadi (${res.status})`
           : text.substring(0, 140);
+        let parsedJsonErr = false;
         try {
           const json = JSON.parse(text);
           errorDetail = json.error || json.message || errorDetail;
+          parsedJsonErr = true;
         } catch {}
         const err: any = new Error(errorDetail);
         err.status = res.status;
-        // Do not retry 4xx client validation/auth errors
-        if (res.status >= 400 && res.status < 500) {
-          throw err;
-        }
+        err.isJsonError = parsedJsonErr;
         throw err;
       }
 
@@ -213,12 +212,12 @@ const safeFetchJSON = async (url: string, options?: RequestInit, retries = 3) =>
       const text = await res.text();
       const trimmed = text.trim();
       if (!trimmed || trimmed.startsWith('<')) {
-        throw new Error('Server JSON o‘rniga HTML qaytardi (qayta urinilmoqda)');
+        throw new Error('Server vaqtincha yangilanmoqda, iltimos qayta urinib ko‘ring');
       }
       return JSON.parse(trimmed);
     } catch (e: any) {
       window.clearTimeout(timeoutId);
-      if (e?.status && e.status >= 400 && e.status < 500) {
+      if (e?.isJsonError || (e?.status && e.status >= 400 && e.status < 500)) {
         throw e;
       }
       if (i === retries - 1) {

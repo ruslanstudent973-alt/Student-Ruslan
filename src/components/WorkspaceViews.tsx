@@ -4,7 +4,7 @@ import {
   MessageCircle, PlusCircle, Grid, ClipboardList, Image as ImageIcon, Handshake,
   BarChart3, Copy, Check, Search, Trash2, Plus, UploadCloud, X, Send, Loader2,
   MapPin, Video, Play, Zap, Lock, UserPlus, Calendar, Sun, Moon, Star, ShieldCheck, ShieldAlert,
-  Clock, CheckCircle2, Volume2, VolumeX, Crown, Gavel, Wallet, TrendingUp, XCircle, Truck, Scale
+  Clock, CheckCircle2, Volume2, VolumeX, Crown, Gavel, Wallet, TrendingUp, XCircle, Truck, Scale, AlertCircle
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell
@@ -1759,14 +1759,23 @@ export const AdminAddProductView: React.FC<{
     throw new Error(data?.error || "Faylni /api/upload orqali yuklashda xatolik yuz berdi");
   };
 
+  const [aiCopyError, setAiCopyError] = useState<string | null>(null);
+
   const handleGenerateAiCopy = async () => {
     playSound();
-    let firstDataImage = imageItems.find(
-      (item) => typeof item.url === 'string' && item.url.startsWith('data:image/')
-    )?.url;
+    setAiCopyError(null);
+    let firstDataImage =
+      imageItems.find(
+        (item) => typeof item.url === 'string' && item.url.startsWith('data:image/')
+      )?.url ||
+      colorVariantItems.find(
+        (item) => typeof item.url === 'string' && item.url.startsWith('data:image/')
+      )?.url;
 
     if (!firstDataImage) {
-      const pendingImgFile = imageItems.find((item) => item.file)?.file;
+      const pendingImgFile =
+        imageItems.find((item) => item.file)?.file ||
+        colorVariantItems.find((item) => item.file)?.file;
       if (pendingImgFile) {
         try {
           firstDataImage = await readFileAsDataUrl(pendingImgFile);
@@ -1776,8 +1785,22 @@ export const AdminAddProductView: React.FC<{
       }
     }
 
-    if (!form.name.trim() && !firstDataImage) {
-      notify("Avval mahsulot nomini kiriting yoki rasm tanlang", 'error');
+    const firstRemoteImageUrl =
+      imageItems.find(
+        (item) =>
+          typeof item.url === 'string' &&
+          (item.url.startsWith('https://') || item.url.startsWith('http://'))
+      )?.url ||
+      colorVariantItems.find(
+        (item) =>
+          typeof item.url === 'string' &&
+          (item.url.startsWith('https://') || item.url.startsWith('http://'))
+      )?.url;
+
+    if (!form.name.trim() && !firstDataImage && !firstRemoteImageUrl) {
+      const msg = "Avval mahsulot nomini kiriting yoki rasm tanlang";
+      setAiCopyError(msg);
+      notify(msg, 'error');
       return;
     }
     setAiGenerating(true);
@@ -1790,7 +1813,8 @@ export const AdminAddProductView: React.FC<{
           category: form.category.trim() || undefined,
           sizes: form.sizes.trim() || undefined,
           priceYuan: form.price.trim() || undefined,
-          imageDataUrl: firstDataImage || undefined
+          imageDataUrl: firstDataImage || undefined,
+          imageUrl: !firstDataImage ? firstRemoteImageUrl : undefined
         })
       });
       setForm((prev) => ({
@@ -1809,7 +1833,10 @@ export const AdminAddProductView: React.FC<{
       }));
       notify("AI mahsulot tavsifi va takliflarini tayyorladi!", 'success');
     } catch (err: any) {
-      notify(err?.message || "AI tavsif yaratishda xatolik yuz berdi", 'error');
+      console.warn('[AdminAddProductView] AI copywriter warning:', err);
+      const msg = err?.message || "AI tavsif yaratishda xatolik yuz berdi";
+      setAiCopyError(msg);
+      notify(msg, 'error');
     } finally {
       setAiGenerating(false);
     }
@@ -2283,6 +2310,12 @@ export const AdminAddProductView: React.FC<{
                 <span>{aiGenerating ? 'AI yozmoqda...' : 'AI bilan tavsif yozish'}</span>
               </button>
             </div>
+            {aiCopyError && (
+              <div className="p-3 rounded-xl bg-red-50/90 dark:bg-red-950/50 border border-red-200 dark:border-red-900/60 text-xs text-red-700 dark:text-red-300 flex items-start gap-2">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <span>{aiCopyError}</span>
+              </div>
+            )}
             <textarea
               rows={4}
               className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none resize-none focus:border-[#0F294A]"

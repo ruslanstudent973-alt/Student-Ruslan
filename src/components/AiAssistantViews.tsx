@@ -15,7 +15,8 @@ import {
   MessageSquare,
   Maximize2,
   PackageSearch,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Product, User, View } from '../types';
@@ -246,23 +247,34 @@ const AiChatPanel: React.FC<SharedChatProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: nextHistory.map((m) => ({ role: m.role, text: m.text })),
+          messages: nextHistory.map((m) => ({
+            role: m.role,
+            content: m.text,
+            text: m.text
+          })),
           userName: currentUser.username,
           vipTier: vipInfo.tier,
           imageDataUrl: outgoingImage || undefined
         })
       });
 
+      const followUps = Array.isArray(res?.quickFollowUps)
+        ? res.quickFollowUps
+        : Array.isArray(res?.followUpSuggestions)
+        ? res.followUpSuggestions
+        : [];
+
       const assistantMsg: AiChatEntry = {
         id: `a-${Date.now()}`,
         role: 'assistant',
         text: res?.reply || "Savolingiz qabul qilindi, sizga yordam berishga tayyorman.",
         recommendedProductIds: Array.isArray(res?.recommendedProductIds) ? res.recommendedProductIds : [],
-        quickFollowUps: Array.isArray(res?.quickFollowUps) ? res.quickFollowUps : [],
+        quickFollowUps: followUps,
         timestamp: Date.now()
       };
       onMessagesChange((prev) => [...prev, assistantMsg]);
     } catch (err: any) {
+      console.warn('[AiChatPanel] AI chat warning:', err);
       const msg = err?.message || "AI Maslahatchi bilan bog'lanishda xatolik yuz berdi.";
       setLastError(msg);
       notify(msg, 'error');
@@ -541,15 +553,21 @@ export const AiAssistantView: React.FC<{
           hintText: visualHint.trim() || undefined
         })
       });
+      const fallbackStyle = Array.isArray(res?.styleKeywords)
+        ? res.styleKeywords.join(', ')
+        : 'Zamonaviy uslub';
       setVisualResult({
-        productName: res.productName,
-        category: res.category,
-        colorAndStyle: res.colorAndStyle,
-        chinaSearchKeywords: res.chinaSearchKeywords,
-        summary: res.summary,
+        productName: res.productName || res.detectedObject || 'Mahsulot aniqlandi',
+        category: res.category || res.categoryGuess || 'Boshqa',
+        colorAndStyle: res.colorAndStyle || fallbackStyle,
+        chinaSearchKeywords:
+          res.chinaSearchKeywords ||
+          (Array.isArray(res?.styleKeywords) ? res.styleKeywords.join(' ') : ''),
+        summary: res.summary || 'Rasm tahlil qilindi.',
         matchedProductIds: Array.isArray(res.matchedProductIds) ? res.matchedProductIds : []
       });
     } catch (err: any) {
+      console.warn('[AiVisualSearch] Visual search warning:', err);
       const msg = err?.message || "Rasmni tahlil qilishda xatolik yuz berdi.";
       setVisualError(msg);
       notify(msg, 'error');
@@ -982,6 +1000,7 @@ export const ProductAiAdvisor: React.FC<{
   const [measurements, setMeasurements] = useState('');
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
+  const [activePresetQ, setActivePresetQ] = useState<string | null>(null);
   const [result, setResult] = useState<{
     answer: string;
     recommendedSize: string;
@@ -996,14 +1015,21 @@ export const ProductAiAdvisor: React.FC<{
     setResult(null);
     setError(null);
     setQuestion('');
+    setActivePresetQ(null);
   }, [product.id]);
 
   const askProductAi = async (customQ?: string) => {
     const q = (customQ ?? question).trim();
     if (!q || loading) return;
     setLoading(true);
+    setActivePresetQ(customQ ?? null);
     setError(null);
     try {
+      const primaryImage =
+        (Array.isArray(product.images) && product.images[0]) ||
+        (Array.isArray(product.colorVariants) && product.colorVariants[0]?.imageUrl) ||
+        undefined;
+
       const res = await safeFetchJSON('/api/ai/product-help', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1017,9 +1043,15 @@ export const ProductAiAdvisor: React.FC<{
             pinduoduoPrice: product.pinduoduoPrice,
             vipPrice: product.vipPrice,
             sizes: product.sizes,
+            colorVariants: product.colorVariants,
             weight: product.weight,
-            isOriginal: product.isOriginal
+            isOriginal: product.isOriginal,
+            rating: product.rating,
+            salesCount: product.salesCount,
+            images: primaryImage ? [primaryImage] : undefined
           },
+          imageUrl: primaryImage && !primaryImage.startsWith('data:') ? primaryImage : undefined,
+          imageDataUrl: primaryImage && primaryImage.startsWith('data:') ? primaryImage : undefined,
           question: q,
           measurements: measurements.trim() || undefined,
           vipTier: vipInfo.tier
@@ -1032,17 +1064,20 @@ export const ProductAiAdvisor: React.FC<{
       });
       if (!customQ) setQuestion('');
     } catch (err: any) {
+      console.warn('[ProductAiAdvisor] AI product help warning:', err);
       const msg = err?.message || "AI yordamchi javob bera olmadi";
       setError(msg);
       notify(msg, 'error');
     } finally {
       setLoading(false);
+      setActivePresetQ(null);
     }
   };
 
   const quickQuestions = [
-    "Menga qaysi o'lcham eng mos keladi?",
-    "Kargo narxi va yetkazib berish muddati qancha?",
+    "Virtual Try-On: menga qaysi o'lcham va rang mos keladi?",
+    "Xitoy sharhlari va sifat AI tahlili qanday?",
+    "Kargo to'lovi va bojxona AI hisob-kitobi qancha?",
     "VIP mijozlar uchun qancha foyda bor?"
   ];
 
@@ -1052,10 +1087,10 @@ export const ProductAiAdvisor: React.FC<{
         <div className="space-y-1">
           <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Ruler size={18} className="text-[#0F294A] dark:text-blue-400" />
-            <span>AI O'lcham va Mahsulot Maslahatchisi</span>
+            <span>AI O'lcham, Sifat va Kargo Maslahatchisi</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Bo'y, vazn yoki oyoq o'lchamingizni yozing — aynan «{product.name}» bo'yicha aniq maslahat oling.
+            Bo'y, vazn yoki oyoq o'lchamingizni yozing — «{product.name}» bo'yicha Virtual Try-On, Xitoy sharhlari tahlili va kargo hisobini oling.
           </p>
         </div>
         <span className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
@@ -1065,19 +1100,27 @@ export const ProductAiAdvisor: React.FC<{
 
       {/* Quick Prompts */}
       <div className="flex flex-wrap gap-2">
-        {quickQuestions.map((q) => (
-          <motion.button
-            key={q}
-            type="button"
-            whileHover={{ y: -1, scale: 1.02 }}
-            whileTap={{ scale: 0.96 }}
-            disabled={loading}
-            onClick={() => askProductAi(q)}
-            className="px-3 py-1.5 rounded-xl yuyu-glass-subtle hover:bg-white/90 dark:hover:bg-slate-800/80 text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors disabled:opacity-50"
-          >
-            {q}
-          </motion.button>
-        ))}
+        {quickQuestions.map((q) => {
+          const isThisLoading = loading && activePresetQ === q;
+          return (
+            <motion.button
+              key={q}
+              type="button"
+              whileHover={{ y: -1, scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
+              disabled={loading}
+              onClick={() => askProductAi(q)}
+              className="px-3 py-1.5 rounded-xl yuyu-glass-subtle hover:bg-white/90 dark:hover:bg-slate-800/80 text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+            >
+              {isThisLoading ? (
+                <Loader2 size={13} className="animate-spin text-[#2563EB]" />
+              ) : (
+                <Sparkles size={12} className="text-[#2563EB]" />
+              )}
+              <span>{q}</span>
+            </motion.button>
+          );
+        })}
       </div>
 
       {/* Inputs */}

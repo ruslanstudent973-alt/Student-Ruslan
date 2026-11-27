@@ -3088,6 +3088,7 @@ async function loadAiCatalog(db: Db): Promise<AiCatalogItem[]> {
           vipPrice: 1,
           isVipOnly: 1,
           sizes: 1,
+          colorVariants: 1,
           weight: 1,
           rating: 1,
           salesCount: 1,
@@ -3102,7 +3103,7 @@ async function loadAiCatalog(db: Db): Promise<AiCatalogItem[]> {
 
 router.post("/ai/chat", async (req, res) => {
   try {
-    const { messages, userName, vipTier, imageDataUrl } = req.body || {};
+    const { messages, userName, vipTier, imageDataUrl, imageUrl } = req.body || {};
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Suhbat xabari bo'sh bo'lmasligi kerak" });
     }
@@ -3113,7 +3114,8 @@ router.post("/ai/chat", async (req, res) => {
       catalog,
       userName: typeof userName === "string" ? userName : undefined,
       vipTier: typeof vipTier === "string" ? vipTier : undefined,
-      imageDataUrl: typeof imageDataUrl === "string" ? imageDataUrl : undefined
+      imageDataUrl: typeof imageDataUrl === "string" ? imageDataUrl : undefined,
+      imageUrl: typeof imageUrl === "string" ? imageUrl : undefined
     });
     res.json({ success: true, ...result });
   } catch (e: any) {
@@ -3124,14 +3126,18 @@ router.post("/ai/chat", async (req, res) => {
 
 router.post("/ai/visual-search", async (req, res) => {
   try {
-    const { imageDataUrl, hintText } = req.body || {};
-    if (!imageDataUrl || typeof imageDataUrl !== "string") {
+    const { imageDataUrl, imageUrl, hintText } = req.body || {};
+    if (
+      (!imageDataUrl || typeof imageDataUrl !== "string") &&
+      (!imageUrl || typeof imageUrl !== "string")
+    ) {
       return res.status(400).json({ error: "Iltimos, avval rasm yuklang" });
     }
     const db = await requireDb();
     const catalog = await loadAiCatalog(db);
     const result = await runAiVisualSearch({
-      imageDataUrl,
+      imageDataUrl: typeof imageDataUrl === "string" ? imageDataUrl : undefined,
+      imageUrl: typeof imageUrl === "string" ? imageUrl : undefined,
       hintText: typeof hintText === "string" ? hintText : undefined,
       catalog
     });
@@ -3144,7 +3150,7 @@ router.post("/ai/visual-search", async (req, res) => {
 
 router.post("/ai/product-help", async (req, res) => {
   try {
-    const { productId, product, question, measurements, vipTier } = req.body || {};
+    const { productId, product, question, measurements, vipTier, imageDataUrl, imageUrl } = req.body || {};
     if (!question || typeof question !== "string" || !question.trim()) {
       return res.status(400).json({ error: "Iltimos, savolingizni yozing" });
     }
@@ -3153,7 +3159,7 @@ router.post("/ai/product-help", async (req, res) => {
     if (productId && typeof productId === "string") {
       const found = await db
         .collection("products")
-        .findOne({ id: productId }, { projection: { _id: 0, images: 0, videos: 0 } });
+        .findOne({ id: productId }, { projection: { _id: 0, videos: 0 } });
       if (found) targetProduct = found as unknown as AiCatalogItem;
     }
     if (!targetProduct && product && typeof product === "object") {
@@ -3167,7 +3173,9 @@ router.post("/ai/product-help", async (req, res) => {
       product: targetProduct,
       question: question.trim(),
       measurements: typeof measurements === "string" ? measurements : undefined,
-      vipTier: typeof vipTier === "string" ? vipTier : undefined
+      vipTier: typeof vipTier === "string" ? vipTier : undefined,
+      imageDataUrl: typeof imageDataUrl === "string" ? imageDataUrl : undefined,
+      imageUrl: typeof imageUrl === "string" ? imageUrl : undefined
     });
     res.json({ success: true, ...result });
   } catch (e: any) {
@@ -3183,8 +3191,12 @@ router.post("/ai/admin-copy", async (req, res) => {
     if (!device) {
       return res.status(403).json({ error: "Admin ruxsati tasdiqlanmagan qurilma" });
     }
-    const { name, category, sizes, priceYuan, imageDataUrl } = req.body || {};
-    if (!String(name || "").trim() && !String(imageDataUrl || "").trim()) {
+    const { name, category, sizes, priceYuan, imageDataUrl, imageUrl } = req.body || {};
+    if (
+      !String(name || "").trim() &&
+      !String(imageDataUrl || "").trim() &&
+      !String(imageUrl || "").trim()
+    ) {
       return res.status(400).json({ error: "Kamida mahsulot nomi yoki rasm kiriting" });
     }
     const result = await runAiAdminCopy({
@@ -3192,7 +3204,8 @@ router.post("/ai/admin-copy", async (req, res) => {
       category: typeof category === "string" ? category : undefined,
       sizes: typeof sizes === "string" ? sizes : undefined,
       priceYuan: typeof priceYuan === "string" ? priceYuan : undefined,
-      imageDataUrl: typeof imageDataUrl === "string" ? imageDataUrl : undefined
+      imageDataUrl: typeof imageDataUrl === "string" ? imageDataUrl : undefined,
+      imageUrl: typeof imageUrl === "string" ? imageUrl : undefined
     });
     res.json({ success: true, ...result });
   } catch (e: any) {
