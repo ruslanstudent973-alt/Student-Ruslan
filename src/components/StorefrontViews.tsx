@@ -1041,7 +1041,7 @@ export const DetailView: React.FC<{
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="font-semibold text-slate-700 dark:text-slate-300">
                   Tanlangan rang:{' '}
-                  <span className="text-[#2563EB] dark:text-blue-400 font-bold">
+                  <span className="text-blue-600 dark:text-blue-400 font-bold">
                     {selectedColor || 'Tanlanmagan'}
                   </span>
                 </span>
@@ -1049,7 +1049,7 @@ export const DetailView: React.FC<{
                   {colorVariants.length} xil rang
                 </span>
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex items-center gap-3 overflow-x-auto pb-2 pt-1 px-1 no-scrollbar">
                 {colorVariants.map((variant, idx) => {
                   const isSelected = selectedColor === variant.name;
                   return (
@@ -1064,12 +1064,12 @@ export const DetailView: React.FC<{
                         setSelectedColorImage(variant.imageUrl);
                         setHeroOverrideImage(variant.imageUrl);
                       }}
-                      className="group flex flex-col items-center gap-1.5 text-center focus:outline-none"
+                      className="group shrink-0 flex flex-col items-center gap-1.5 text-center focus:outline-none"
                     >
                       <div
                         className={`relative w-16 h-16 rounded-xl overflow-hidden transition-all yuyu-glass-subtle ${
                           isSelected
-                            ? 'ring-2 ring-[#2563EB] border-2 border-[#2563EB] shadow-md shadow-blue-600/20'
+                            ? 'ring-2 ring-blue-600 border border-blue-600 shadow-md shadow-blue-600/20'
                             : 'border border-slate-200/80 dark:border-slate-700 opacity-85 hover:opacity-100 hover:border-slate-400'
                         }`}
                       >
@@ -1079,15 +1079,15 @@ export const DetailView: React.FC<{
                           className="w-full h-full object-cover"
                         />
                         {isSelected && (
-                          <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#2563EB] text-white flex items-center justify-center shadow-sm">
+                          <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-sm">
                             <Check size={10} strokeWidth={3} />
                           </span>
                         )}
                       </div>
                       <span
-                        className={`text-[11px] font-medium max-w-[68px] truncate transition-colors ${
+                        className={`text-[11px] font-medium max-w-[64px] truncate transition-colors ${
                           isSelected
-                            ? 'text-[#2563EB] dark:text-blue-400 font-bold'
+                            ? 'text-blue-600 dark:text-blue-400 font-bold'
                             : 'text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
                         }`}
                       >
